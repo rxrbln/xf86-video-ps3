@@ -56,22 +56,30 @@ int Ps3SpuSendCommand(Ps3SpuPtr fPtr, enum spu_command cmd,
 {
 	int ret;
 
+// TEMP
+	ErrorF("1\n");
+
 	memcpy(&fPtr->io, argp, len);
-	
+	// TEMP
+	ErrorF("2\n");
 	if(spu_thread_mbox_send(fPtr->spu_thread, cmd) < 0) {
-		ErrorF("Failed writing command to SPU");
+		ErrorF("Failed writing command to SPU\n");
 		return -EIO;
 	}
-
-	spu_thread_wait();
-
+// TEMP
+	ErrorF("3\n");
+//	spu_thread_wait();
+// TEMP
+	ErrorF("4\n");
 	if (spu_thread_mbox_recv(fPtr->spu_thread, &ret) <= 0) {
-		die("Failed reading return value from SPU");
+		ErrorF("Failed reading return value from SPU\n");
 		return -EIO;
 	}
-
+// TEMP
+	ErrorF("5\n");
 	memcpy(argp, &fPtr->io, len);
-
+// TEMP
+	ErrorF("6\n");
 	return ret;
 }
 
@@ -79,6 +87,9 @@ void Ps3SpuCleanup(Ps3SpuPtr fPtr)
 {
 	if (fPtr == NULL)
 		return;
+
+	if(spu_thread_mbox_send(fPtr->spu_thread, SPU_CMD_EXIT) < 0)
+		ErrorF("Failed writing EXIT command to SPU\n");
 
 	spu_thread_join(fPtr->spu_thread);
 

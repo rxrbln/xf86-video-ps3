@@ -96,8 +96,6 @@ static void command_loop(struct spu_args *ctxt)
 
 		spu_write_out_intr_mbox(ret);
 	}
-
-	spu_write_out_intr_mbox(0);
 }
 
 int main(eaddr_t spuid, eaddr_t argp, eaddr_t envp)

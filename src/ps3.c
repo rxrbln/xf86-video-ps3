@@ -383,8 +383,11 @@ Ps3Probe(DriverPtr drv, int flags)
 		ret = Ps3SpuSendCommand(spu, SPU_CMD_TEST, &args, sizeof(args));
 		ErrorF("ps3: -> Ps3SpuSendCommand(TEST): ret=%d output=%d\n",
 		       ret, args.output);
-		ret = Ps3SpuSendCommand(spu, SPU_CMD_EXIT, NULL, 0);
-		ErrorF("ps3: -> Ps3SpuSendCommand(EXIT): ret=%d\n", ret);
+		args.input1 = 1000;
+		args.input2 = 12;
+		ret = Ps3SpuSendCommand(spu, SPU_CMD_TEST, &args, sizeof(args));
+		ErrorF("ps3: -> Ps3SpuSendCommand(TEST): ret=%d output=%d\n",
+		       ret, args.output);
 	}
 		
 // TEMP
