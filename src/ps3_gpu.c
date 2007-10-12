@@ -183,9 +183,6 @@ Ps3GpuPtr Ps3GpuInit(void)
 
 	enter_direct_mode(fPtr);
 
-// TEMP
-	clear_vram(fPtr);
-
 	return fPtr;
 
 err_unmap_fifo:
