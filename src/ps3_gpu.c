@@ -33,16 +33,6 @@
 /* -------------------------------------------------------------------- */
 /* our private data, and two functions to allocate/free this            */
 
-struct _Ps3GpuRec_ {
-	int fd;
-	CARD32 vram_base;
-	CARD32 vram_size;
-	CARD32 fifo_base;
-	CARD32 fifo_size;
-	CARD32 ctrl_base;
-	CARD32 ctrl_size;
-};
-
 static int gpu_get_info(Ps3GpuPtr fPtr)
 {
 	struct ps3fb_ioctl_gpu_info info;

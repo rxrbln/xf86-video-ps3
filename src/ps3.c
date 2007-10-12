@@ -63,16 +63,9 @@ static Bool	Ps3PreInit(ScrnInfoPtr pScrn, int flags);
 static Bool	Ps3ScreenInit(int Index, ScreenPtr pScreen, int argc,
 				char **argv);
 static Bool	Ps3CloseScreen(int scrnIndex, ScreenPtr pScreen);
-static void *	Ps3WindowLinear(ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode,
-				  CARD32 *size, void *closure);
-static void	Ps3PointerMoved(int index, int x, int y);
 static Bool	Ps3DGAInit(ScrnInfoPtr pScrn, ScreenPtr pScreen);
 static Bool	Ps3DriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op,
 				pointer ptr);
-
-
-enum { PS3_ROTATE_NONE=0, PS3_ROTATE_CW=270, PS3_ROTATE_UD=180, PS3_ROTATE_CCW=90 };
-
 
 /* -------------------------------------------------------------------- */
 
@@ -127,15 +120,11 @@ static SymTabRec Ps3Chipsets[] = {
 
 /* Supported options */
 typedef enum {
-	OPTION_SHADOW_FB,
-	OPTION_ROTATE,
 	OPTION_FBDEV,
 	OPTION_DEBUG
 } Ps3Opts;
 
 static const OptionInfoRec Ps3Options[] = {
-	{ OPTION_SHADOW_FB,	"ShadowFB",	OPTV_BOOLEAN,	{0},	FALSE },
-	{ OPTION_ROTATE,	"Rotate",	OPTV_STRING,	{0},	FALSE },
 	{ OPTION_FBDEV,		"fbdev",	OPTV_STRING,	{0},	FALSE },
 	{ OPTION_DEBUG,		"debug",	OPTV_BOOLEAN,	{0},	FALSE },
 	{ -1,			NULL,		OPTV_NONE,	{0},	FALSE }
@@ -152,17 +141,6 @@ static const char *afbSymbols[] = {
 static const char *fbSymbols[] = {
 	"fbScreenInit",
 	"fbPictureInit",
-	NULL
-};
-
-static const char *shadowSymbols[] = {
-	"shadowAdd",
-	"shadowInit",
-	"shadowSetup",
-	"shadowUpdatePacked",
-	"shadowUpdatePackedWeak",
-	"shadowUpdateRotatePacked",
-	"shadowUpdateRotatePackedWeak",
 	NULL
 };
 
@@ -232,8 +210,7 @@ ps3Setup(pointer module, pointer opts, int *errmaj, int *errmin)
 	if (!setupDone) {
 		setupDone = TRUE;
 		xf86AddDriver(&PS3, module, HaveDriverFuncs);
-		LoaderRefSymLists(afbSymbols, fbSymbols,
-				  shadowSymbols, fbdevHWSymbols, NULL);
+		LoaderRefSymLists(afbSymbols, fbSymbols, fbdevHWSymbols, NULL);
 		return (pointer)1;
 	} else {
 		if (errmaj) *errmaj = LDR_ONCEONLY;
@@ -247,13 +224,11 @@ ps3Setup(pointer module, pointer opts, int *errmaj, int *errmin)
 /* our private data, and two functions to allocate/free this            */
 
 typedef struct {
+	Ps3GpuPtr			gpu;
 	unsigned char*			fbstart;
 	unsigned char*			fbmem;
 	int				fboff;
 	int				lineLength;
-	int				rotate;
-	Bool				shadowFB;
-	void				*shadow;
 	CloseScreenProcPtr		CloseScreen;
 	CreateScreenResourcesProcPtr	CreateScreenResources;
 	void				(*PointerMoved)(int index, int x, int y);
@@ -358,8 +333,6 @@ Ps3Probe(DriverPtr drv, int flags)
 	int bus,device,func;
 	char *dev;
 	Bool foundScreen = FALSE;
-// TEMP
-	Ps3GpuPtr gpu;
 
 
 	TRACE("probe start");
@@ -367,9 +340,6 @@ Ps3Probe(DriverPtr drv, int flags)
 // TEMP
 	ErrorF("ps3: Hello world!\n");
 
-// TEMP
-	ErrorF("ps3: -- 1\n");
-	gpu = Ps3GpuInit();
 // TEMP
 /*
 	ErrorF("ps3: -- 2\n");
@@ -390,9 +360,6 @@ Ps3Probe(DriverPtr drv, int flags)
 		       ret, args.output);
 	}
 */		
-// TEMP
-	ErrorF("ps3: -- 3\n");
-	Ps3GpuCleanup(gpu);
 // TEMP
 	ErrorF("ps3: -- 4\n");
 
@@ -588,44 +555,7 @@ Ps3PreInit(ScrnInfoPtr pScrn, int flags)
 	memcpy(fPtr->Options, Ps3Options, sizeof(Ps3Options));
 	xf86ProcessOptions(pScrn->scrnIndex, fPtr->pEnt->device->options, fPtr->Options);
 
-	/* use shadow framebuffer by default */
-	fPtr->shadowFB = xf86ReturnOptValBool(fPtr->Options, OPTION_SHADOW_FB, TRUE);
-
 	debug = xf86ReturnOptValBool(fPtr->Options, OPTION_DEBUG, FALSE);
-
-	/* rotation */
-	fPtr->rotate = PS3_ROTATE_NONE;
-	if ((s = xf86GetOptValString(fPtr->Options, OPTION_ROTATE)))
-	{
-	  if(!xf86NameCmp(s, "CW"))
-	  {
-	    fPtr->shadowFB = TRUE;
-	    fPtr->rotate = PS3_ROTATE_CW;
-	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-		       "rotating screen clockwise\n");
-	  }
-	  else if(!xf86NameCmp(s, "CCW"))
-	  {
-	    fPtr->shadowFB = TRUE;
-	    fPtr->rotate = PS3_ROTATE_CCW;
-	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-		       "rotating screen counter-clockwise\n");
-	  }
-	  else if(!xf86NameCmp(s, "UD"))
-	  {
-	    fPtr->shadowFB = TRUE;
-	    fPtr->rotate = PS3_ROTATE_UD;
-	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-		       "rotating screen upside-down\n");
-	  }
-	  else
-	  {
-	    xf86DrvMsg(pScrn->scrnIndex, X_CONFIG,
-		       "\"%s\" is not a valid value for Option \"Rotate\"\n", s);
-	    xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-		       "valid options are \"CW\", \"CCW\" and \"UD\"\n");
-	  }
-	}
 
 	/* select video modes */
 
@@ -711,16 +641,6 @@ Ps3PreInit(ScrnInfoPtr pScrn, int flags)
 		xf86LoaderReqSymLists(syms, NULL);
 	}
 
-	/* Load shadow if needed */
-	if (fPtr->shadowFB) {
-		xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "using shadow"
-			   " framebuffer\n");
-		if (!xf86LoadSubModule(pScrn, "shadow")) {
-			Ps3FreeRec(pScrn);
-			return FALSE;
-		}
-		xf86LoaderReqSymLists(shadowSymbols, NULL);
-	}
 
 	TRACE_EXIT("PreInit");
 	return TRUE;
@@ -744,31 +664,8 @@ Ps3CreateScreenResources(ScreenPtr pScreen)
 
     pPixmap = pScreen->GetScreenPixmap(pScreen);
 
-    if (!shadowAdd(pScreen, pPixmap, fPtr->rotate ?
-		   shadowUpdateRotatePackedWeak() : shadowUpdatePackedWeak(),
-		   Ps3WindowLinear, fPtr->rotate, NULL)) {
-	return FALSE;
-    }
-
     return TRUE;
 }
-
-static Bool
-Ps3ShadowInit(ScreenPtr pScreen)
-{
-    ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
-    Ps3Ptr fPtr = PS3PTR(pScrn);
-    
-    if (!shadowSetup(pScreen)) {
-	return FALSE;
-    }
-
-    fPtr->CreateScreenResources = pScreen->CreateScreenResources;
-    pScreen->CreateScreenResources = Ps3CreateScreenResources;
-
-    return TRUE;
-}
-
 
 static Bool
 Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
@@ -792,12 +689,19 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	       pScrn->offset.red,pScrn->offset.green,pScrn->offset.blue);
 #endif
 
+// TEMP
+	ErrorF("Ps3GpuInit\n");
+	fPtr->gpu = Ps3GpuInit();
+
 	if (NULL == (fPtr->fbmem = fbdevHWMapVidmem(pScrn))) {
 	        xf86DrvMsg(scrnIndex,X_ERROR,"mapping of video memory"
 			   " failed\n");
 		return FALSE;
 	}
 	fPtr->fboff = fbdevHWLinearOffset(pScrn);
+
+// TEMP
+	fPtr->fbmem = fPtr->gpu->vram_base;
 
 	fbdevHWSave(pScrn);
 
@@ -832,61 +736,23 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	  return FALSE;
 	}
 
-	if(fPtr->rotate==PS3_ROTATE_CW || fPtr->rotate==PS3_ROTATE_CCW)
-	{
-	  int tmp = pScrn->virtualX;
-	  pScrn->virtualX = pScrn->displayWidth = pScrn->virtualY;
-	  pScrn->virtualY = tmp;
-	} else if (!fPtr->shadowFB) {
-		/* FIXME: this doesn't work for all cases, e.g. when each scanline
-			has a padding which is independent from the depth (controlfb) */
-		pScrn->displayWidth = fbdevHWGetLineLength(pScrn) /
-				      (pScrn->bitsPerPixel / 8);
+	/* FIXME: this doesn't work for all cases, e.g. when each scanline
+	   has a padding which is independent from the depth (controlfb) */
+	pScrn->displayWidth = fbdevHWGetLineLength(pScrn) /
+		(pScrn->bitsPerPixel / 8);
 
-		if (pScrn->displayWidth != pScrn->virtualX) {
-			xf86DrvMsg(scrnIndex, X_INFO,
-				   "Pitch updated to %d after ModeInit\n",
-				   pScrn->displayWidth);
-		}
-	}
-
-	if(fPtr->rotate && !fPtr->PointerMoved) {
-		fPtr->PointerMoved = pScrn->PointerMoved;
-		pScrn->PointerMoved = Ps3PointerMoved;
+	if (pScrn->displayWidth != pScrn->virtualX) {
+		xf86DrvMsg(scrnIndex, X_INFO,
+			   "Pitch updated to %d after ModeInit\n",
+			   pScrn->displayWidth);
 	}
 
 	fPtr->fbstart = fPtr->fbmem + fPtr->fboff;
-
-	if (fPtr->shadowFB) {
-	    fPtr->shadow = xcalloc(1, pScrn->virtualX * pScrn->virtualY *
-				   pScrn->bitsPerPixel);
-
-	    if (!fPtr->shadow) {
-		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-			   "Failed to allocate shadow framebuffer\n");
-		return FALSE;
-	    }
-	}
 
 	switch ((type = fbdevHWGetType(pScrn)))
 	{
 #ifdef USE_AFB
 	case FBDEVHW_PLANES:
-		if (fPtr->rotate)
-		{
-		  xf86DrvMsg(scrnIndex, X_ERROR,
-			     "internal error: rotate not supported for afb\n");
-		  ret = FALSE;
-		  break;
-		}
-		if (fPtr->shadowFB)
-		{
-		  xf86DrvMsg(scrnIndex, X_ERROR,
-			     "internal error: shadow framebuffer not supported"
-			     " for afb\n");
-		  ret = FALSE;
-		  break;
-		}
 		ret = afbScreenInit
 			(pScreen, fPtr->fbstart, pScrn->virtualX, pScrn->virtualY,
 			 pScrn->xDpi, pScrn->yDpi, pScrn->displayWidth);
@@ -898,8 +764,7 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 		case 16:
 		case 24:
 		case 32:
-			ret = fbScreenInit(pScreen, fPtr->shadowFB ? fPtr->shadow
-					   : fPtr->fbstart, pScrn->virtualX,
+			ret = fbScreenInit(pScreen, fPtr->fbstart, pScrn->virtualX,
 					   pScrn->virtualY, pScrn->xDpi,
 					   pScrn->yDpi, pScrn->displayWidth,
 					   pScrn->bitsPerPixel);
@@ -967,23 +832,7 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 		xf86DrvMsg(pScrn->scrnIndex, X_WARNING,
 			   "Render extension initialisation failed\n");
 
-	if (fPtr->shadowFB && !Ps3ShadowInit(pScreen)) {
-	    xf86DrvMsg(scrnIndex, X_ERROR,
-		       "shadow framebuffer initialization failed\n");
-	    return FALSE;
-	}
-
-	if (!fPtr->rotate)
-	  Ps3DGAInit(pScrn, pScreen);
-	else {
-	  xf86DrvMsg(scrnIndex, X_INFO, "display rotated; disabling DGA\n");
-	  xf86DrvMsg(scrnIndex, X_INFO, "using driver rotation; disabling "
-			                "XRandR\n");
-	  xf86DisableRandR();
-	  if (pScrn->bitsPerPixel == 24)
-	    xf86DrvMsg(scrnIndex, X_WARNING, "rotation might be broken at 24 "
-                                             "bits per pixel\n");
-	}
+	Ps3DGAInit(pScrn, pScreen);
 
 	xf86SetBlackWhitePixels(pScreen);
 	miInitializeBackingStore(pScreen);
@@ -1070,10 +919,10 @@ Ps3CloseScreen(int scrnIndex, ScreenPtr pScreen)
 	
 	fbdevHWRestore(pScrn);
 	fbdevHWUnmapVidmem(pScrn);
-	if (fPtr->shadow) {
-	    xfree(fPtr->shadow);
-	    fPtr->shadow = NULL;
-	}
+// TEMP
+	ErrorF("Ps3GpuCleanup\n");
+	Ps3GpuCleanup(fPtr->gpu);
+
 	if (fPtr->pDGAMode) {
 	  xfree(fPtr->pDGAMode);
 	  fPtr->pDGAMode = NULL;
@@ -1085,69 +934,6 @@ Ps3CloseScreen(int scrnIndex, ScreenPtr pScreen)
 	pScreen->CloseScreen = fPtr->CloseScreen;
 	return (*pScreen->CloseScreen)(scrnIndex, pScreen);
 }
-
-
-
-/***********************************************************************
- * Shadow stuff
- ***********************************************************************/
-
-static void *
-Ps3WindowLinear(ScreenPtr pScreen, CARD32 row, CARD32 offset, int mode,
-		 CARD32 *size, void *closure)
-{
-    ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
-    Ps3Ptr fPtr = PS3PTR(pScrn);
-
-    if (!pScrn->vtSema)
-      return NULL;
-
-    if (fPtr->lineLength)
-      *size = fPtr->lineLength;
-    else
-      *size = fPtr->lineLength = ps3HWGetLineLength(pScrn);
-
-    return ((CARD8 *)fPtr->fbstart + row * fPtr->lineLength + offset);
-}
-
-static void
-Ps3PointerMoved(int index, int x, int y)
-{
-    ScrnInfoPtr pScrn = xf86Screens[index];
-    Ps3Ptr fPtr = PS3PTR(pScrn);
-    int newX, newY;
-
-    switch (fPtr->rotate)
-    {
-    case PS3_ROTATE_CW:
-	/* 90 degrees CW rotation. */
-	newX = pScrn->pScreen->height - y - 1;
-	newY = x;
-	break;
-
-    case PS3_ROTATE_CCW:
-	/* 90 degrees CCW rotation. */
-	newX = y;
-	newY = pScrn->pScreen->width - x - 1;
-	break;
-
-    case PS3_ROTATE_UD:
-	/* 180 degrees UD rotation. */
-	newX = pScrn->pScreen->width - x - 1;
-	newY = pScrn->pScreen->height - y - 1;
-	break;
-
-    default:
-	/* No rotation. */
-	newX = x;
-	newY = y;
-	break;
-    }
-
-    /* Pass adjusted pointer coordinates to wrapped PointerMoved function. */
-    (*fPtr->PointerMoved)(index, newX, newY);
-}
-
 
 /***********************************************************************
  * DGA stuff

@@ -5,7 +5,16 @@
 #ifndef _PS3_GPU_H_
 #define _PS3_GPU_H_
 
-struct _Ps3GpuRec_;
+struct _Ps3GpuRec_ {
+	int fd;
+	CARD32 vram_base;
+	CARD32 vram_size;
+	CARD32 fifo_base;
+	CARD32 fifo_size;
+	CARD32 ctrl_base;
+	CARD32 ctrl_size;
+};
+
 typedef struct _Ps3GpuRec_ Ps3GpuRec, *Ps3GpuPtr;
 
 Ps3GpuPtr Ps3GpuInit(void);
