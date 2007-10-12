@@ -38,8 +38,7 @@
 #include <pciaccess.h>
 #endif
 
-#include "spu/api.h"
-#include "ps3_spu.h"
+#include "ps3_gpu.h"
 
 static Bool debug = 0;
 
@@ -360,7 +359,7 @@ Ps3Probe(DriverPtr drv, int flags)
 	char *dev;
 	Bool foundScreen = FALSE;
 // TEMP
-	Ps3SpuPtr spu;
+	Ps3GpuPtr gpu;
 
 
 	TRACE("probe start");
@@ -370,8 +369,9 @@ Ps3Probe(DriverPtr drv, int flags)
 
 // TEMP
 	ErrorF("ps3: -- 1\n");
-	spu = Ps3SpuInit();
+	gpu = Ps3GpuInit();
 // TEMP
+/*
 	ErrorF("ps3: -- 2\n");
 	{
 		int ret;
@@ -389,10 +389,10 @@ Ps3Probe(DriverPtr drv, int flags)
 		ErrorF("ps3: -> Ps3SpuSendCommand(TEST): ret=%d output=%d\n",
 		       ret, args.output);
 	}
-		
+*/		
 // TEMP
 	ErrorF("ps3: -- 3\n");
-	Ps3SpuCleanup(spu);
+	Ps3GpuCleanup(gpu);
 // TEMP
 	ErrorF("ps3: -- 4\n");
 

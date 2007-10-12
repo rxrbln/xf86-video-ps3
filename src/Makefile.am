@@ -25,15 +25,16 @@
 # TODO: -nostdlib/-Bstatic/-lgcc platform magic, not installing the .a, etc.
 SUBDIRS = spu
 
-AM_CFLAGS = @XORG_CFLAGS@
+AM_CFLAGS = @XORG_CFLAGS@ -I/lib/modules/`uname -r`/build/include
 ps3_drv_la_LTLIBRARIES = ps3_drv.la
 ps3_drv_la_LDFLAGS = -module -avoid-version
 ps3_drv_ladir = @moduledir@/drivers
 
-ps3_drv_la_SOURCES = ps3.c ps3_spu.c spu_thread.c
+ps3_drv_la_SOURCES = ps3.c ps3_gpu.c
+#ps3_drv_la_SOURCES = ps3.c ps3_spu.c spu_thread.c
 
-ps3_drv_la_LIBADD = spu_embed.o -lpthread -lspe2
-ps3_drv_la_DEPENDENCIES = spu_embed.o
-
-spu_embed.o: spu/spu_embed
-	embedspu spu_embed spu/spu_embed spu_embed.o
+#ps3_drv_la_LIBADD = spu_embed.o -lpthread -lspe2
+#ps3_drv_la_DEPENDENCIES = spu_embed.o
+#
+#spu_embed.o: spu/spu_embed
+#	embedspu spu_embed spu/spu_embed spu_embed.o
