@@ -83,6 +83,5 @@ XORG_RELEASE_VERSION
 AC_OUTPUT([
 	Makefile
 	src/Makefile
-	src/spu/Makefile
 	man/Makefile
 ])
