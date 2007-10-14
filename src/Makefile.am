@@ -23,8 +23,6 @@
 # -avoid-version prevents gratuitous .0.0.0 version numbers on the end
 # _ladir passes a dummy rpath to libtool so the thing will actually link
 # TODO: -nostdlib/-Bstatic/-lgcc platform magic, not installing the .a, etc.
-SUBDIRS = spu
-
 AM_CFLAGS = @XORG_CFLAGS@ -I/lib/modules/`uname -r`/build/include
 ps3_drv_la_LTLIBRARIES = ps3_drv.la
 ps3_drv_la_LDFLAGS = -module -avoid-version
