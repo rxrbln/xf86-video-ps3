@@ -33,8 +33,10 @@
 #include "fbdevhw.h"
 
 #include "xf86xv.h"
+#include "exa.h"
 
 #include "ps3_gpu.h"
+#include "ps3.h"
 
 static Bool debug = 0;
 
@@ -48,14 +50,14 @@ static Bool debug = 0;
 /* -------------------------------------------------------------------- */
 /* prototypes                                                           */
 
-static const OptionInfoRec * Ps3AvailableOptions(int chipid, int busid);
-static void	Ps3Identify(int flags);
-static Bool	Ps3Probe(DriverPtr drv, int flags);
-static Bool	Ps3PreInit(ScrnInfoPtr pScrn, int flags);
-static Bool	Ps3ScreenInit(int Index, ScreenPtr pScreen, int argc,
+static const OptionInfoRec * PS3AvailableOptions(int chipid, int busid);
+static void	PS3Identify(int flags);
+static Bool	PS3Probe(DriverPtr drv, int flags);
+static Bool	PS3PreInit(ScrnInfoPtr pScrn, int flags);
+static Bool	PS3ScreenInit(int Index, ScreenPtr pScreen, int argc,
 				char **argv);
-static Bool	Ps3CloseScreen(int scrnIndex, ScreenPtr pScreen);
-static Bool	Ps3DriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op,
+static Bool	PS3CloseScreen(int scrnIndex, ScreenPtr pScreen);
+static Bool	PS3DriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op,
 				pointer ptr);
 
 /* -------------------------------------------------------------------- */
@@ -73,27 +75,29 @@ static int pix24bpp = 0;
 _X_EXPORT DriverRec PS3 = {
 	PS3_VERSION,
 	PS3_DRIVER_NAME,
-	Ps3Identify,
-	Ps3Probe,
-	Ps3AvailableOptions,
+	PS3Identify,
+	PS3Probe,
+	PS3AvailableOptions,
 	NULL,
 	0,
-	Ps3DriverFunc,
+	PS3DriverFunc,
 };
 
 /* Supported "chipsets" */
-static SymTabRec Ps3Chipsets[] = {
+static SymTabRec PS3Chipsets[] = {
     { 0, "ps3" },
     {-1, NULL }
 };
 
 /* Supported options */
 typedef enum {
+	OPTION_NOACCEL,
 	OPTION_FBDEV,
 	OPTION_DEBUG
-} Ps3Opts;
+} PS3Opts;
 
-static const OptionInfoRec Ps3Options[] = {
+static const OptionInfoRec PS3Options[] = {
+	{ OPTION_NOACCEL,       "NoAccel",      OPTV_BOOLEAN,   {0},    FALSE },
 	{ OPTION_FBDEV,		"fbdev",	OPTV_STRING,	{0},	FALSE },
 	{ OPTION_DEBUG,		"debug",	OPTV_BOOLEAN,	{0},	FALSE },
 	{ -1,			NULL,		OPTV_NONE,	{0},	FALSE }
@@ -105,6 +109,12 @@ static const char *fbSymbols[] = {
 	"fbScreenInit",
 	"fbPictureInit",
 	NULL
+};
+
+static const char *exaSymbols[] = {
+    "exaDriverInit",
+    "exaOffscreenInit",
+    NULL
 };
 
 static const char *fbdevHWSymbols[] = {
@@ -173,7 +183,7 @@ ps3Setup(pointer module, pointer opts, int *errmaj, int *errmin)
 	if (!setupDone) {
 		setupDone = TRUE;
 		xf86AddDriver(&PS3, module, HaveDriverFuncs);
-		LoaderRefSymLists(fbSymbols, fbdevHWSymbols, NULL);
+		LoaderRefSymLists(fbSymbols, exaSymbols, fbdevHWSymbols, NULL);
 		return (pointer)1;
 	} else {
 		if (errmaj) *errmaj = LDR_ONCEONLY;
@@ -186,32 +196,18 @@ ps3Setup(pointer module, pointer opts, int *errmaj, int *errmin)
 /* -------------------------------------------------------------------- */
 /* our private data, and two functions to allocate/free this            */
 
-typedef struct {
-	Ps3GpuPtr			gpu;
-	unsigned char*			fbstart;
-	unsigned char*			fbmem;
-	int				fboff;
-	int				lineLength;
-	CloseScreenProcPtr		CloseScreen;
-	CreateScreenResourcesProcPtr	CreateScreenResources;
-	EntityInfoPtr			pEnt;
-	OptionInfoPtr			Options;
-} Ps3Rec, *Ps3Ptr;
-
-#define PS3PTR(p) ((Ps3Ptr)((p)->driverPrivate))
-
 static Bool
-Ps3GetRec(ScrnInfoPtr pScrn)
+PS3GetRec(ScrnInfoPtr pScrn)
 {
 	if (pScrn->driverPrivate != NULL)
 		return TRUE;
 	
-	pScrn->driverPrivate = xnfcalloc(sizeof(Ps3Rec), 1);
+	pScrn->driverPrivate = xnfcalloc(sizeof(PS3Rec), 1);
 	return TRUE;
 }
 
 static void
-Ps3FreeRec(ScrnInfoPtr pScrn)
+PS3FreeRec(ScrnInfoPtr pScrn)
 {
 	if (pScrn->driverPrivate == NULL)
 		return;
@@ -222,20 +218,20 @@ Ps3FreeRec(ScrnInfoPtr pScrn)
 /* -------------------------------------------------------------------- */
 
 static const OptionInfoRec *
-Ps3AvailableOptions(int chipid, int busid)
+PS3AvailableOptions(int chipid, int busid)
 {
-	return Ps3Options;
+	return PS3Options;
 }
 
 static void
-Ps3Identify(int flags)
+PS3Identify(int flags)
 {
-	xf86PrintChipsets(PS3_NAME, "driver for framebuffer", Ps3Chipsets);
+	xf86PrintChipsets(PS3_NAME, "driver for framebuffer", PS3Chipsets);
 }
 
 
 static Bool
-Ps3Probe(DriverPtr drv, int flags)
+PS3Probe(DriverPtr drv, int flags)
 {
 	int i;
 	ScrnInfoPtr pScrn;
@@ -281,9 +277,9 @@ Ps3Probe(DriverPtr drv, int flags)
 			    pScrn->driverVersion = PS3_VERSION;
 			    pScrn->driverName    = PS3_DRIVER_NAME;
 			    pScrn->name          = PS3_NAME;
-			    pScrn->Probe         = Ps3Probe;
-			    pScrn->PreInit       = Ps3PreInit;
-			    pScrn->ScreenInit    = Ps3ScreenInit;
+			    pScrn->Probe         = PS3Probe;
+			    pScrn->PreInit       = PS3PreInit;
+			    pScrn->ScreenInit    = PS3ScreenInit;
 			    pScrn->SwitchMode    = fbdevHWSwitchModeWeak();
 			    pScrn->AdjustFrame   = fbdevHWAdjustFrameWeak();
 			    pScrn->EnterVT       = fbdevHWEnterVTWeak();
@@ -302,9 +298,9 @@ Ps3Probe(DriverPtr drv, int flags)
 }
 
 static Bool
-Ps3PreInit(ScrnInfoPtr pScrn, int flags)
+PS3PreInit(ScrnInfoPtr pScrn, int flags)
 {
-	Ps3Ptr fPtr;
+	PS3Ptr pPS3;
 	int default_depth, fbbpp;
 	const char *mod = NULL, *s;
 	const char **syms = NULL;
@@ -320,17 +316,17 @@ Ps3PreInit(ScrnInfoPtr pScrn, int flags)
 
 	pScrn->monitor = pScrn->confScreen->monitor;
 
-	Ps3GetRec(pScrn);
-	fPtr = PS3PTR(pScrn);
+	PS3GetRec(pScrn);
+	pPS3 = PS3PTR(pScrn);
 
-	fPtr->pEnt = xf86GetEntityInfo(pScrn->entityList[0]);
+	pPS3->pEnt = xf86GetEntityInfo(pScrn->entityList[0]);
 
 	pScrn->racMemFlags = RAC_FB | RAC_COLORMAP | RAC_CURSOR | RAC_VIEWPORT;
 	/* XXX Is this right?  Can probably remove RAC_FB */
 	pScrn->racIoFlags = RAC_FB | RAC_COLORMAP | RAC_CURSOR | RAC_VIEWPORT;
 
 	/* open device */
-	if (!fbdevHWInit(pScrn,NULL,xf86FindOptionValue(fPtr->pEnt->device->options,"fbdev")))
+	if (!fbdevHWInit(pScrn,NULL,xf86FindOptionValue(pPS3->pEnt->device->options,"fbdev")))
 		return FALSE;
 	default_depth = fbdevHWGetDepth(pScrn,&fbbpp);
 	if (!xf86SetDepthBpp(pScrn, default_depth, default_depth, fbbpp,
@@ -375,12 +371,18 @@ Ps3PreInit(ScrnInfoPtr pScrn, int flags)
 
 	/* handle options */
 	xf86CollectOptions(pScrn, NULL);
-	if (!(fPtr->Options = xalloc(sizeof(Ps3Options))))
+	if (!(pPS3->Options = xalloc(sizeof(PS3Options))))
 		return FALSE;
-	memcpy(fPtr->Options, Ps3Options, sizeof(Ps3Options));
-	xf86ProcessOptions(pScrn->scrnIndex, fPtr->pEnt->device->options, fPtr->Options);
+	memcpy(pPS3->Options, PS3Options, sizeof(PS3Options));
+	xf86ProcessOptions(pScrn->scrnIndex, pPS3->pEnt->device->options, pPS3->Options);
 
-	debug = xf86ReturnOptValBool(fPtr->Options, OPTION_DEBUG, FALSE);
+	debug = xf86ReturnOptValBool(pPS3->Options, OPTION_DEBUG, FALSE);
+
+	if (xf86ReturnOptValBool(pPS3->Options, OPTION_NOACCEL, FALSE)) {
+		pPS3->NoAccel = TRUE;
+		xf86DrvMsg(pScrn->scrnIndex, X_CONFIG, "Acceleration disabled\n");
+	} else
+		pPS3->NoAccel = FALSE;
 
 	/* select video modes */
 
@@ -411,25 +413,24 @@ Ps3PreInit(ScrnInfoPtr pScrn, int flags)
 	/* Set display resolution */
 	xf86SetDpi(pScrn, 0, 0);
 
-	/* Load bpp-specific modules */
-	if (pScrn->bitsPerPixel == 32) {
-		mod = "fb";
-		syms = fbSymbols;
-	} else {
-		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-			   "unsupported number of bits per pixel: %d",
-			   pScrn->bitsPerPixel);
+	/* Load FB */
+	if (xf86LoadSubModule(pScrn, "fb") == NULL) {
+		PS3FreeRec(pScrn);
 		return FALSE;
 	}
 
-	if (mod && xf86LoadSubModule(pScrn, mod) == NULL) {
-		Ps3FreeRec(pScrn);
-		return FALSE;
-	}
-	if (mod && syms) {
-		xf86LoaderReqSymLists(syms, NULL);
-	}
+	xf86LoaderReqSymLists(fbSymbols, NULL);
 
+	/* Load EXA */
+	if (!pPS3->NoAccel) {
+		if (!xf86LoadSubModule(pScrn, "exa")) {
+			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+				   "EXA module note found\n");
+			PS3FreeRec(pScrn);
+			return FALSE;
+		}
+		xf86LoaderReqSymLists(exaSymbols, NULL);
+	}
 
 	TRACE_EXIT("PreInit");
 	return TRUE;
@@ -437,16 +438,16 @@ Ps3PreInit(ScrnInfoPtr pScrn, int flags)
 
 
 static Bool
-Ps3CreateScreenResources(ScreenPtr pScreen)
+PS3CreateScreenResources(ScreenPtr pScreen)
 {
     PixmapPtr pPixmap;
     ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
-    Ps3Ptr fPtr = PS3PTR(pScrn);
+    PS3Ptr pPS3 = PS3PTR(pScrn);
     Bool ret;
 
-    pScreen->CreateScreenResources = fPtr->CreateScreenResources;
+    pScreen->CreateScreenResources = pPS3->CreateScreenResources;
     ret = pScreen->CreateScreenResources(pScreen);
-    pScreen->CreateScreenResources = Ps3CreateScreenResources;
+    pScreen->CreateScreenResources = PS3CreateScreenResources;
 
     if (!ret)
 	return FALSE;
@@ -457,16 +458,16 @@ Ps3CreateScreenResources(ScreenPtr pScreen)
 }
 
 static Bool
-Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
+PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 {
 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
-	Ps3Ptr fPtr = PS3PTR(pScrn);
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 	VisualPtr visual;
 	int init_picture = 0;
 	int ret, flags;
 	int type;
 
-	TRACE_ENTER("Ps3ScreenInit");
+	TRACE_ENTER("PS3ScreenInit");
 
 #if DEBUG
 	ErrorF("\tbitsPerPixel=%d, depth=%d, defaultVisual=%s\n"
@@ -479,18 +480,18 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 #endif
 
 // TEMP
-	ErrorF("Ps3GpuInit\n");
-	fPtr->gpu = Ps3GpuInit();
+	ErrorF("PS3GpuInit\n");
+	pPS3->gpu = PS3GpuInit();
 
-	if (NULL == (fPtr->fbmem = fbdevHWMapVidmem(pScrn))) {
+	if (NULL == (pPS3->fbmem = fbdevHWMapVidmem(pScrn))) {
 	        xf86DrvMsg(scrnIndex,X_ERROR,"mapping of video memory"
 			   " failed\n");
 		return FALSE;
 	}
-	fPtr->fboff = fbdevHWLinearOffset(pScrn);
+	pPS3->fboff = fbdevHWLinearOffset(pScrn);
 
 // TEMP
-	fPtr->fbmem = fPtr->gpu->vram_base;
+	pPS3->fbmem = pPS3->gpu->vram_base;
 
 	fbdevHWSave(pScrn);
 
@@ -525,10 +526,10 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 			   pScrn->displayWidth);
 	}
 
-	fPtr->fbstart = fPtr->fbmem + fPtr->fboff;
+	pPS3->fbstart = pPS3->fbmem + pPS3->fboff;
 
 	if (pScrn->bitsPerPixel == 32) {
-		ret = fbScreenInit(pScreen, fPtr->fbstart, pScrn->virtualX,
+		ret = fbScreenInit(pScreen, pPS3->fbstart, pScrn->virtualX,
 				   pScrn->virtualY, pScrn->xDpi,
 				   pScrn->yDpi, pScrn->displayWidth,
 				   pScrn->bitsPerPixel);
@@ -537,7 +538,7 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 		xf86DrvMsg(scrnIndex, X_ERROR,
 			   "internal error: invalid number of bits per"
 			   " pixel (%d) encountered in"
-			   " Ps3ScreenInit()\n", pScrn->bitsPerPixel);
+			   " PS3ScreenInit()\n", pScrn->bitsPerPixel);
 		ret = FALSE;
 	}
 
@@ -563,6 +564,16 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 			   "Render extension initialisation failed\n");
 
 	xf86SetBlackWhitePixels(pScreen);
+
+	if (!pPS3->NoAccel) {
+		if (!PS3InitDma(pScrn)) {
+			xf86DrvMsg(scrnIndex,X_ERROR, "DMA init failed\n");
+			return FALSE;
+		}
+
+		PS3ExaInit(pScreen);
+	}
+
 	miInitializeBackingStore(pScreen);
 	xf86SetBackingStore(pScreen);
 
@@ -572,7 +583,7 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	if (!miCreateDefColormap(pScreen)) {
 		xf86DrvMsg(scrnIndex, X_ERROR,
 			   "internal error: miCreateDefColormap failed "
-			   "in Ps3ScreenInit()\n");
+			   "in PS3ScreenInit()\n");
 		return FALSE;
 	}
 
@@ -586,8 +597,8 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	pScreen->SaveScreen = fbdevHWSaveScreenWeak();
 
 	/* Wrap the current CloseScreen function */
-	fPtr->CloseScreen = pScreen->CloseScreen;
-	pScreen->CloseScreen = Ps3CloseScreen;
+	pPS3->CloseScreen = pScreen->CloseScreen;
+	pScreen->CloseScreen = PS3CloseScreen;
 
 	{
 	    XF86VideoAdaptorPtr *ptr;
@@ -598,32 +609,32 @@ Ps3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	    }
 	}
 
-	TRACE_EXIT("Ps3ScreenInit");
+	TRACE_EXIT("PS3ScreenInit");
 
 	return TRUE;
 }
 
 static Bool
-Ps3CloseScreen(int scrnIndex, ScreenPtr pScreen)
+PS3CloseScreen(int scrnIndex, ScreenPtr pScreen)
 {
 	ScrnInfoPtr pScrn = xf86Screens[scrnIndex];
-	Ps3Ptr fPtr = PS3PTR(pScrn);
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 	
 	fbdevHWRestore(pScrn);
 	fbdevHWUnmapVidmem(pScrn);
 // TEMP
-	ErrorF("Ps3GpuCleanup\n");
-	Ps3GpuCleanup(fPtr->gpu);
+	ErrorF("PS3GpuCleanup\n");
+	PS3GpuCleanup(pPS3->gpu);
 
 	pScrn->vtSema = FALSE;
 
-	pScreen->CreateScreenResources = fPtr->CreateScreenResources;
-	pScreen->CloseScreen = fPtr->CloseScreen;
+	pScreen->CreateScreenResources = pPS3->CreateScreenResources;
+	pScreen->CloseScreen = pPS3->CloseScreen;
 	return (*pScreen->CloseScreen)(scrnIndex, pScreen);
 }
 
 static Bool
-Ps3DriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op, pointer ptr)
+PS3DriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op, pointer ptr)
 {
     xorgHWFlags *flag;
     

@@ -5,7 +5,7 @@
 #ifndef _PS3_GPU_H_
 #define _PS3_GPU_H_
 
-struct _Ps3GpuRec_ {
+struct _PS3GpuRec_ {
 	int fd;
 	CARD32 vram_base;
 	CARD32 vram_size;
@@ -13,14 +13,15 @@ struct _Ps3GpuRec_ {
 	CARD32 fifo_size;
 	CARD32 ctrl_base;
 	CARD32 ctrl_size;
+	CARD32 fifo_start;
 };
 
-typedef struct _Ps3GpuRec_ Ps3GpuRec, *Ps3GpuPtr;
+typedef struct _PS3GpuRec_ PS3GpuRec, *PS3GpuPtr;
 
-Ps3GpuPtr Ps3GpuInit(void);
+PS3GpuPtr PS3GpuInit(void);
 // TEMP
-//int Ps3GpuSendCommand(Ps3GpuPtr fPtr, enum gpu_command cmd,
+//int PS3GpuSendCommand(PS3GpuPtr fPtr, enum gpu_command cmd,
 //		      void *argp, size_t len);
-void Ps3GpuCleanup(Ps3GpuPtr fPtr);
+void PS3GpuCleanup(PS3GpuPtr fPtr);
 
 #endif

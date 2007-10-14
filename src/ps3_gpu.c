@@ -33,7 +33,7 @@
 /* -------------------------------------------------------------------- */
 /* our private data, and two functions to allocate/free this            */
 
-static int gpu_get_info(Ps3GpuPtr fPtr)
+static int gpu_get_info(PS3GpuPtr pPS3)
 {
 	struct ps3fb_ioctl_gpu_info info;
 	int ret = -1;
@@ -53,9 +53,12 @@ static int gpu_get_info(Ps3GpuPtr fPtr)
 	ErrorF("vram %d fifo %d ctrl %d\n",
 	       info.vram_size, info.fifo_size, info.ctrl_size);
 
-	fPtr->vram_size = info.vram_size;
-	fPtr->fifo_size = info.fifo_size;
-	fPtr->ctrl_size = info.ctrl_size;
+	pPS3->vram_size = info.vram_size;
+	pPS3->fifo_size = info.fifo_size;
+	pPS3->ctrl_size = info.ctrl_size;
+
+	/* GPU hangs if all space is used */
+	pPS3->fifo_size -= 1024;
 
 	ret = 0;
 out:
@@ -92,7 +95,7 @@ static void unmap_resource(void *base, int len)
 	munmap(base, len);
 }
 
-static int enter_direct_mode(Ps3GpuPtr fPtr)
+static int enter_direct_mode(PS3GpuPtr pPS3)
 {
 	int ret = 0;
 	int fd;
@@ -122,7 +125,7 @@ static int enter_direct_mode(Ps3GpuPtr fPtr)
 	}
 
 	/* keep fd open */
-	fPtr->fd = fd;
+	pPS3->fd = fd;
 	return 0;
 
 out:
@@ -131,12 +134,12 @@ out:
 	return ret;
 }
 
-static int leave_direct_mode(Ps3GpuPtr fPtr)
+static int leave_direct_mode(PS3GpuPtr pPS3)
 {
 	int ret = 0;
 	int fd;
 
-	fd = fPtr->fd;
+	fd = pPS3->fd;
 
 	if ((ret = ioctl(fd, PS3FB_IOCTL_OFF, 0)) < 0) {
 		ErrorF("ioctl: %s", strerror(errno));
@@ -149,55 +152,59 @@ out:
 	return ret;
 }
 
-static void clear_vram(Ps3GpuPtr fPtr)
+static void clear_vram(PS3GpuPtr pPS3)
 {
-	memset((void *) fPtr->vram_base, 0xff, fPtr->vram_size);
+	memset((void *) pPS3->vram_base, 0xff, pPS3->vram_size);
 }
 
-Ps3GpuPtr Ps3GpuInit(void)
+PS3GpuPtr PS3GpuInit(void)
 {
-	Ps3GpuPtr fPtr;
+	PS3GpuPtr pPS3;
 
-	fPtr = xnfcalloc(sizeof(Ps3GpuRec), 1);
+	pPS3 = xnfcalloc(sizeof(PS3GpuRec), 1);
 
 	/* fill in GPU context */
-	gpu_get_info(fPtr);
+	gpu_get_info(pPS3);
 
-	if ((fPtr->vram_base = (CARD32)
-	     map_resource(DEV_GPU_VRAM, fPtr->vram_size)) == 0) {
+	if ((pPS3->vram_base = (CARD32)
+	     map_resource(DEV_GPU_VRAM, pPS3->vram_size)) == 0) {
 		ErrorF("failed to map vram\n");
 		goto err_free;
 	}
 
-	if ((fPtr->fifo_base = (CARD32)
-	     map_resource(DEV_GPU_FIFO, fPtr->fifo_size)) == 0) {
+	if ((pPS3->fifo_base = (CARD32)
+	     map_resource(DEV_GPU_FIFO, pPS3->fifo_size)) == 0) {
 		ErrorF("failed to map fifo\n");
 		goto err_unmap_vram;
 	}
 
-	if ((fPtr->ctrl_base = (CARD32)
-	     map_resource(DEV_GPU_CTRL, fPtr->ctrl_size)) == 0) {
+	if ((pPS3->ctrl_base = (CARD32)
+	     map_resource(DEV_GPU_CTRL, pPS3->ctrl_size)) == 0) {
 		ErrorF("failed to map ctrl\n");
 		goto err_unmap_fifo;
 	}
 
-	enter_direct_mode(fPtr);
+	/* determine the start of the FIFO from GPU point of view */
+	pPS3->fifo_start = ((CARD32 *) pPS3->ctrl_base)[0x10] &
+		~(pPS3->fifo_size - 1);
 
-	return fPtr;
+	enter_direct_mode(pPS3);
+
+	return pPS3;
 
 err_unmap_fifo:
-	unmap_resource((void *) fPtr->fifo_base, fPtr->fifo_size);
+	unmap_resource((void *) pPS3->fifo_base, pPS3->fifo_size);
 err_unmap_vram:
-	unmap_resource((void *) fPtr->ctrl_base, fPtr->ctrl_size);
+	unmap_resource((void *) pPS3->ctrl_base, pPS3->ctrl_size);
 err_free:
-	xfree(fPtr);
+	xfree(pPS3);
 
 	return NULL;
 }
 
 // TEMP
 #if 0
-int Ps3GpuSendCommand(Ps3GpuPtr fPtr, enum gpu_command cmd,
+int PS3GpuSendCommand(PS3GpuPtr pPS3, enum gpu_command cmd,
 		      void *argp, size_t len)
 {
 	int ret;
@@ -205,10 +212,10 @@ int Ps3GpuSendCommand(Ps3GpuPtr fPtr, enum gpu_command cmd,
 // TEMP
 	ErrorF("1\n");
 
-	memcpy(&fPtr->io, argp, len);
+	memcpy(&pPS3->io, argp, len);
 	// TEMP
 	ErrorF("2\n");
-	if(gpu_thread_mbox_send(fPtr->gpu_thread, cmd) < 0) {
+	if(gpu_thread_mbox_send(pPS3->gpu_thread, cmd) < 0) {
 		ErrorF("Failed writing command to GPU\n");
 		return -EIO;
 	}
@@ -217,29 +224,29 @@ int Ps3GpuSendCommand(Ps3GpuPtr fPtr, enum gpu_command cmd,
 //	gpu_thread_wait();
 // TEMP
 	ErrorF("4\n");
-	if (gpu_thread_mbox_recv(fPtr->gpu_thread, &ret) <= 0) {
+	if (gpu_thread_mbox_recv(pPS3->gpu_thread, &ret) <= 0) {
 		ErrorF("Failed reading return value from GPU\n");
 		return -EIO;
 	}
 // TEMP
 	ErrorF("5\n");
-	memcpy(argp, &fPtr->io, len);
+	memcpy(argp, &pPS3->io, len);
 // TEMP
 	ErrorF("6\n");
 	return ret;
 }
 #endif
 
-void Ps3GpuCleanup(Ps3GpuPtr fPtr)
+void PS3GpuCleanup(PS3GpuPtr pPS3)
 {
-	if (fPtr == NULL)
+	if (pPS3 == NULL)
 		return;
 
-	leave_direct_mode(fPtr);
+	leave_direct_mode(pPS3);
 
-	unmap_resource((void *) fPtr->ctrl_base, fPtr->ctrl_size);
-	unmap_resource((void *) fPtr->fifo_base, fPtr->fifo_size);
-	unmap_resource((void *) fPtr->vram_base, fPtr->vram_size);
+	unmap_resource((void *) pPS3->ctrl_base, pPS3->ctrl_size);
+	unmap_resource((void *) pPS3->fifo_base, pPS3->fifo_size);
+	unmap_resource((void *) pPS3->vram_base, pPS3->vram_size);
 
-	xfree(fPtr);
+	xfree(pPS3);
 }
