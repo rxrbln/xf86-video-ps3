@@ -1,6 +1,8 @@
 /*
  * Authors:  Alan Hourihane, <alanh@fairlite.demon.co.uk>
  *	     Michel Dänzer, <michel@tungstengraphics.com>
+ *
+ * PS3 Modifications (c) Vivien Chappelier (vivien.chappelier@free.fr)
  */
 
 #ifdef HAVE_CONFIG_H

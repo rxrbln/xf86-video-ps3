@@ -39,6 +39,7 @@
 
 /*
   Exa Modifications (c) Lars Knoll (lars@trolltech.com)
+  PS3 Modifications (c) Vivien Chappelier (vivien.chappelier@free.fr)
  */
 
 //#include "nv_include.h"
