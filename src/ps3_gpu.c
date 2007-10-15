@@ -23,6 +23,9 @@
 #include <linux/fb.h>
 #include <asm/ps3fb.h>
 
+#include "exa.h"
+
+#include "ps3.h"
 #include "ps3_gpu.h"
 
 #define DEV_VFB		"/dev/fb0"
@@ -33,7 +36,7 @@
 /* -------------------------------------------------------------------- */
 /* our private data, and two functions to allocate/free this            */
 
-static int gpu_get_info(PS3GpuPtr pPS3)
+static int gpu_get_info(PS3Ptr pPS3)
 {
 	struct ps3fb_ioctl_gpu_info info;
 	int ret = -1;
@@ -95,8 +98,9 @@ static void unmap_resource(void *base, int len)
 	munmap(base, len);
 }
 
-static int enter_direct_mode(PS3GpuPtr pPS3)
+static int enter_direct_mode(PS3Ptr pPS3)
 {
+        struct fb_fix_screeninfo fix;
 	int ret = 0;
 	int fd;
 	int val = 0;
@@ -105,6 +109,12 @@ static int enter_direct_mode(PS3GpuPtr pPS3)
 		ErrorF("open: %s", strerror(errno));
 		return -1;
 	}
+
+        /* get framebuffer size */
+        if ((ret = ioctl(fd, FBIOGET_FSCREENINFO, &fix)) < 0) {
+                perror("ioctl");
+                goto out;
+        }
 
 	/* stop that incessant blitting! */
 	if ((ret = ioctl(fd, PS3FB_IOCTL_ON, 0)) < 0) {
@@ -124,6 +134,12 @@ static int enter_direct_mode(PS3GpuPtr pPS3)
 		goto out;
 	}
 
+	pPS3->iof_base = (CARD32) pPS3->fbmem;
+	pPS3->iof_size = fix.smem_len;
+	pPS3->iof_offset = 0x0d000000; /* GPUIOF */
+
+	pPS3->fbmem = (unsigned char *) pPS3->vram_base;
+
 	/* keep fd open */
 	pPS3->fd = fd;
 	return 0;
@@ -134,7 +150,7 @@ out:
 	return ret;
 }
 
-static int leave_direct_mode(PS3GpuPtr pPS3)
+static int leave_direct_mode(PS3Ptr pPS3)
 {
 	int ret = 0;
 	int fd;
@@ -152,17 +168,13 @@ out:
 	return ret;
 }
 
-static void clear_vram(PS3GpuPtr pPS3)
+static void clear_vram(PS3Ptr pPS3)
 {
 	memset((void *) pPS3->vram_base, 0xff, pPS3->vram_size);
 }
 
-PS3GpuPtr PS3GpuInit(void)
+int PS3GpuInit(PS3Ptr pPS3)
 {
-	PS3GpuPtr pPS3;
-
-	pPS3 = xnfcalloc(sizeof(PS3GpuRec), 1);
-
 	/* fill in GPU context */
 	gpu_get_info(pPS3);
 
@@ -190,7 +202,7 @@ PS3GpuPtr PS3GpuInit(void)
 
 	enter_direct_mode(pPS3);
 
-	return pPS3;
+	return 0;
 
 err_unmap_fifo:
 	unmap_resource((void *) pPS3->fifo_base, pPS3->fifo_size);
@@ -199,49 +211,11 @@ err_unmap_vram:
 err_free:
 	xfree(pPS3);
 
-	return NULL;
+	return -1;
 }
 
-// TEMP
-#if 0
-int PS3GpuSendCommand(PS3GpuPtr pPS3, enum gpu_command cmd,
-		      void *argp, size_t len)
+void PS3GpuCleanup(PS3Ptr pPS3)
 {
-	int ret;
-
-// TEMP
-	ErrorF("1\n");
-
-	memcpy(&pPS3->io, argp, len);
-	// TEMP
-	ErrorF("2\n");
-	if(gpu_thread_mbox_send(pPS3->gpu_thread, cmd) < 0) {
-		ErrorF("Failed writing command to GPU\n");
-		return -EIO;
-	}
-// TEMP
-	ErrorF("3\n");
-//	gpu_thread_wait();
-// TEMP
-	ErrorF("4\n");
-	if (gpu_thread_mbox_recv(pPS3->gpu_thread, &ret) <= 0) {
-		ErrorF("Failed reading return value from GPU\n");
-		return -EIO;
-	}
-// TEMP
-	ErrorF("5\n");
-	memcpy(argp, &pPS3->io, len);
-// TEMP
-	ErrorF("6\n");
-	return ret;
-}
-#endif
-
-void PS3GpuCleanup(PS3GpuPtr pPS3)
-{
-	if (pPS3 == NULL)
-		return;
-
 	leave_direct_mode(pPS3);
 
 	unmap_resource((void *) pPS3->ctrl_base, pPS3->ctrl_size);

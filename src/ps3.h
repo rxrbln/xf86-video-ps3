@@ -4,7 +4,6 @@
 struct _PS3Rec;
 typedef struct _PS3Rec *PS3Ptr;
 typedef struct _PS3Rec {
-	PS3GpuPtr			gpu;
 	unsigned char*			fbstart;
 	unsigned char*			fbmem;
 	int				fboff;
@@ -15,6 +14,18 @@ typedef struct _PS3Rec {
 	OptionInfoPtr			Options;
 	ExaDriverPtr			EXADriverPtr;
 	Bool                            NoAccel;
+
+	int fd;
+	CARD32 vram_base;
+	CARD32 vram_size;
+	CARD32 fifo_base;
+	CARD32 fifo_size;
+	CARD32 fifo_start;
+	CARD32 ctrl_base;
+	CARD32 ctrl_size;
+	CARD32 iof_base;
+	CARD32 iof_size;
+	CARD32 iof_offset;
 
 	void				(*DMAKickoffCallback)(PS3Ptr pPS3);
 

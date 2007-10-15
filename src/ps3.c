@@ -37,8 +37,8 @@
 #include "xf86xv.h"
 #include "exa.h"
 
-#include "ps3_gpu.h"
 #include "ps3.h"
+#include "ps3_gpu.h"
 
 static Bool debug = 0;
 
@@ -481,19 +481,15 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	       pScrn->offset.red,pScrn->offset.green,pScrn->offset.blue);
 #endif
 
-// TEMP
-	ErrorF("PS3GpuInit\n");
-	pPS3->gpu = PS3GpuInit();
-
 	if (NULL == (pPS3->fbmem = fbdevHWMapVidmem(pScrn))) {
 	        xf86DrvMsg(scrnIndex,X_ERROR,"mapping of video memory"
 			   " failed\n");
 		return FALSE;
 	}
+
 	pPS3->fboff = fbdevHWLinearOffset(pScrn);
 
-// TEMP
-	pPS3->fbmem = pPS3->gpu->vram_base;
+	PS3GpuInit(pPS3);
 
 	fbdevHWSave(pScrn);
 
@@ -624,9 +620,8 @@ PS3CloseScreen(int scrnIndex, ScreenPtr pScreen)
 	
 	fbdevHWRestore(pScrn);
 	fbdevHWUnmapVidmem(pScrn);
-// TEMP
-	ErrorF("PS3GpuCleanup\n");
-	PS3GpuCleanup(pPS3->gpu);
+
+	PS3GpuCleanup(pPS3);
 
 	pScrn->vtSema = FALSE;
 

@@ -2,7 +2,6 @@
 #include "exa.h"
 
 #include <errno.h>
-#include "ps3_gpu.h"
 
 #include "ps3.h"
 #include "ps3_dma.h"
@@ -47,7 +46,7 @@ void PS3DmaWait (ScrnInfoPtr pScrn, int size)
 		if(pPS3->dmaPut >= dmaGet) {
 			pPS3->dmaFree = pPS3->dmaMax - pPS3->dmaCurrent;
 			if(pPS3->dmaFree < size) {
-				PS3DmaNext(pPS3, (0x20000000|pPS3->gpu->fifo_start));
+				PS3DmaNext(pPS3, (0x20000000|pPS3->fifo_start));
 				if(dmaGet <= SKIPS) {
 					if(pPS3->dmaPut <= SKIPS) /* corner case - will be idle */
 						WRITE_PUT(pPS3, SKIPS + 1);
@@ -102,7 +101,7 @@ void PS3Sync(ScrnInfoPtr pScrn)
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int t_start, timeout = 2000;
 
-	ErrorF("%s\n", __FUNCTION__);
+//	ErrorF("%s\n", __FUNCTION__);
 
 	if(pPS3->NoAccel)
 		return;
@@ -145,7 +144,7 @@ void PS3ResetGraphics(ScrnInfoPtr pScrn)
 	ErrorF("%s\n", __FUNCTION__);
 
 	pPS3->dmaPut = pPS3->dmaCurrent = READ_GET(pPS3);
-	pPS3->dmaMax = (pPS3->gpu->fifo_size >> 2) - 2;
+	pPS3->dmaMax = (pPS3->fifo_size >> 2) - 2;
 	pPS3->dmaFree = pPS3->dmaMax - pPS3->dmaCurrent;
 
 	/* assert there's enough room for the skips */
@@ -172,8 +171,8 @@ Bool PS3InitDma(ScrnInfoPtr pScrn)
 
 	ErrorF("%s:%d\n", __FUNCTION__, __LINE__);
 
-	pPS3->dmaBase = (CARD32 *) pPS3->gpu->fifo_base;
-	pPS3->FIFO = (volatile CARD32 *) pPS3->gpu->ctrl_base;
+	pPS3->dmaBase = (CARD32 *) pPS3->fifo_base;
+	pPS3->FIFO = (volatile CARD32 *) pPS3->ctrl_base;
 
 	xf86DrvMsg(pScrn->scrnIndex, X_INFO,
 		   "  Control registers : %p\n", pPS3->FIFO);
@@ -181,12 +180,12 @@ Bool PS3InitDma(ScrnInfoPtr pScrn)
 		   "  DMA command buffer: %p\n", pPS3->dmaBase);
 	xf86DrvMsg(pScrn->scrnIndex, X_INFO,
 		   "  DMA cmdbuf length : %d KiB\n",
-		   pPS3->gpu->fifo_size / 1024);
+		   pPS3->fifo_size / 1024);
 	xf86DrvMsg(pScrn->scrnIndex, X_INFO,
-		   "  DMA base PUT      : 0x%08x\n", pPS3->gpu->fifo_start);
+		   "  DMA base PUT      : 0x%08x\n", pPS3->fifo_start);
 
 	pPS3->dmaPut = pPS3->dmaCurrent = READ_GET(pPS3);
-	pPS3->dmaMax = (pPS3->gpu->fifo_size >> 2) - 2;
+	pPS3->dmaMax = (pPS3->fifo_size >> 2) - 2;
 	pPS3->dmaFree = pPS3->dmaMax - pPS3->dmaCurrent;
 
 	for (i = 0; i < SKIPS; i++) {

@@ -63,8 +63,8 @@ enum PS3Instances {
 
 /* Channels to which instances are bound by the hypervisor */
 enum PS3Channels {
-	PS3MemFormatDownloadChannel	= 1,
-	PS3MemFormatUploadChannel	= 2,
+	PS3MemFormatUploadChannel	= 1,
+	PS3MemFormatDownloadChannel	= 2,
 	PS3ContextSurfacesChannel	= 3,
 	PS3ScaledImageChannel		= 6,
 };
@@ -92,23 +92,23 @@ extern void PS3Sync(ScrnInfoPtr pScrn);
 
 #define _PS3_FENCE() mem_barrier();
 
-#define READ_PUT(pPS3) (((pPS3)->FIFO[0x0010] - pPS3->gpu->fifo_start) >> 2)
-#define READ_GET(pPS3) (((pPS3)->FIFO[0x0011] - pPS3->gpu->fifo_start) >> 2)
+#define READ_PUT(pPS3) (((pPS3)->FIFO[0x0010] - pPS3->fifo_start) >> 2)
+#define READ_GET(pPS3) (((pPS3)->FIFO[0x0011] - pPS3->fifo_start) >> 2)
 #if 0
 #define WRITE_PUT(pPS3, data) {       \
   volatile CARD8 scratch;            \
   mem_barrier();                        \
-  scratch = ((char*)(pPS3)->gpu->vram_base)[0];       \
-  (pPS3)->FIFO[0x0010] = ((data) << 2) + pPS3->gpu->fifo_start; \
-	xf86DrvMsg(0, X_ERROR, "WRITE_PUT: 0x%08x\n", ((data) << 2) + pPS3->gpu->fifo_start); \
+  scratch = ((char*)(pPS3)->vram_base)[0];       \
+  (pPS3)->FIFO[0x0010] = ((data) << 2) + pPS3->fifo_start; \
+	xf86DrvMsg(0, X_ERROR, "WRITE_PUT: 0x%08x\n", ((data) << 2) + pPS3->fifo_start); \
   mem_barrier();                     \
 }
 #else
 #define WRITE_PUT(pPS3, data) {       \
   volatile CARD8 scratch;            \
   mem_barrier();                        \
-  scratch = ((char*)(pPS3)->gpu->vram_base)[0];       \
-  (pPS3)->FIFO[0x0010] = ((data) << 2) + pPS3->gpu->fifo_start; \
+  scratch = ((char*)(pPS3)->vram_base)[0];       \
+  (pPS3)->FIFO[0x0010] = ((data) << 2) + pPS3->fifo_start; \
   mem_barrier();                     \
 }
 #endif
