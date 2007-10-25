@@ -1,6 +1,6 @@
 #include "xf86.h"
 #include "exa.h"
-
+#include "xf86xv.h"
 #include <errno.h>
 
 #include "ps3.h"

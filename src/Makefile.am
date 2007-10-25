@@ -28,4 +28,4 @@ ps3_drv_la_LTLIBRARIES = ps3_drv.la
 ps3_drv_la_LDFLAGS = -module -avoid-version
 ps3_drv_ladir = @moduledir@/drivers
 
-ps3_drv_la_SOURCES = ps3.c ps3_gpu.c ps3_exa.c ps3_dma.c
+ps3_drv_la_SOURCES = ps3.c ps3_gpu.c ps3_exa.c ps3_dma.c ps3_video.c

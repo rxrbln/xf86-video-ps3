@@ -1,6 +1,7 @@
 #ifndef __PS3_H__
 #define __PS3_H__
 
+
 struct _PS3Rec;
 typedef struct _PS3Rec *PS3Ptr;
 typedef struct _PS3Rec {
@@ -26,7 +27,9 @@ typedef struct _PS3Rec {
 	CARD32 iof_base;
 	CARD32 iof_size;
 	CARD32 iof_offset;
-
+	CARD32 xv_base;
+	CARD32 xv_size;
+	XF86VideoAdaptorPtr             blitAdaptor;
 	void				(*DMAKickoffCallback)(PS3Ptr pPS3);
 
 	CARD32				*dmaBase;

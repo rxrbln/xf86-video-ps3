@@ -592,6 +592,8 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 
 	xf86DPMSInit(pScreen, fbdevHWDPMSSetWeak(), 0);
 
+	PS3InitVideo(pScreen);
+	
 	pScreen->SaveScreen = fbdevHWSaveScreenWeak();
 
 	/* Wrap the current CloseScreen function */

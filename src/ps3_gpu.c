@@ -24,7 +24,7 @@
 #include <asm/ps3fb.h>
 
 #include "exa.h"
-
+#include "xf86xv.h"
 #include "ps3.h"
 #include "ps3_gpu.h"
 
@@ -137,8 +137,11 @@ static int enter_direct_mode(PS3Ptr pPS3)
 	pPS3->iof_base = (CARD32) pPS3->fbmem;
 	pPS3->iof_size = fix.smem_len;
 	pPS3->iof_offset = 0x0d000000; /* GPUIOF */
-
+	
 	pPS3->fbmem = (unsigned char *) pPS3->vram_base;
+	/* reserve mem for xv */
+	pPS3->xv_size = 1920 * 1080 * 2;
+	pPS3->xv_base = pPS3->iof_base + pPS3->iof_size - pPS3->xv_size;
 
 	/* keep fd open */
 	pPS3->fd = fd;

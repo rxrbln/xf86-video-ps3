@@ -45,7 +45,7 @@
 //#include "nv_include.h"
 #include "xf86.h"
 #include "exa.h"
-
+#include "xf86xv.h"
 #include "ps3.h"
 #include "ps3_dma.h"
 
@@ -206,7 +206,7 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 
 	/* screen to screen copy */
 	PS3DmaStart(pPS3, PS3ScaledImageChannel,
-		    NV10_SCALED_IMAGE_FROM_MEMORY_SET_DMA_IN_MEMORY, 1);
+		    NV04_SCALED_IMAGE_FROM_MEMORY_DMA_IMAGE, 1);
 	PS3DmaNext (pPS3, PS3DmaFB);
 
 	PS3DmaStart(pPS3, PS3ScaledImageChannel, STRETCH_BLIT_FORMAT, 2);
@@ -528,7 +528,7 @@ static Bool PS3PrepareComposite(int	  op,
 
 	/* memory to screen copy */
 	PS3DmaStart(pPS3, PS3ScaledImageChannel,
-		    NV10_SCALED_IMAGE_FROM_MEMORY_SET_DMA_IN_MEMORY, 1);
+		    NV04_SCALED_IMAGE_FROM_MEMORY_DMA_IMAGE, 1);
 	PS3DmaNext (pPS3, PS3DmaFB);
 
 	PS3DmaStart(pPS3, PS3ScaledImageChannel, STRETCH_BLIT_FORMAT, 2);
