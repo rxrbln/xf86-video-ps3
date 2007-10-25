@@ -54,6 +54,9 @@
 #include <sys/time.h>
 #include <string.h>
 
+//#define TRACE() ErrorF("%s\n", __FUNCTION__);
+#define TRACE()
+
 Bool
 PS3AccelGetCtxSurf2DFormatFromPixmap(PixmapPtr pPix, int *fmt_ret)
 {
@@ -145,18 +148,18 @@ static Bool PS3ExaPrepareSolid(PixmapPtr pPixmap,
 			      Pixel planemask,
 			      Pixel fg)
 {
-	ErrorF("%s\n", __FUNCTION__);
+	TRACE();
 	return FALSE;
 }
 
 static void PS3ExaSolid (PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 {
-	ErrorF("%s\n", __FUNCTION__);
+	TRACE();
 }
 
 static void PS3ExaDoneSolid (PixmapPtr pPixmap)
 {
-	ErrorF("%s\n", __FUNCTION__);
+	TRACE();
 }
 
 static CARD32 copy_src_size, copy_src_pitch, copy_src_offset;
@@ -269,7 +272,7 @@ static void PS3ExaDoneCopy (PixmapPtr pDstPixmap)
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	CARD32 format;
 
-//	ErrorF("%s\n", __FUNCTION__);
+//	TRACE();
 
 	format = SURFACE_FORMAT_X8R8G8B8;
 
@@ -465,7 +468,7 @@ static Bool PS3CheckComposite(int	op,
 {
 	CARD32 ret = 0;
 
-	ErrorF("%s\n", __FUNCTION__);
+	TRACE();
 
 	/* PictOpOver doesn't work correctly. The HW command assumes
 	 * non premuliplied alpha
@@ -506,7 +509,7 @@ static Bool PS3PrepareComposite(int	  op,
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int srcFormat, dstFormat;
 
-	ErrorF("%s\n", __FUNCTION__);
+	TRACE();
 
 	if (pSrcPicture->format == PICT_a8r8g8b8)
 		srcFormat = STRETCH_BLIT_FORMAT_A8R8G8B8;
@@ -559,7 +562,7 @@ static void PS3Composite(PixmapPtr pDst,
 	ScrnInfoPtr pScrn = xf86Screens[pDst->drawable.pScreen->myNum];
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
-	ErrorF("%s\n", __FUNCTION__);
+	TRACE();
 
 	PS3DmaStart(pPS3, PS3ScaledImageChannel, STRETCH_BLIT_CLIP_POINT, 6);
 	PS3DmaNext (pPS3, dstX | (dstY << 16));
@@ -584,7 +587,7 @@ static void PS3DoneComposite (PixmapPtr pDst)
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	CARD32 format;
 
-	ErrorF("%s\n", __FUNCTION__);
+	TRACE();
 
 	format = SURFACE_FORMAT_X8R8G8B8;
 
@@ -599,7 +602,7 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
-	ErrorF("%s\n", __FUNCTION__);
+	TRACE();
 
 	if(!(pPS3->EXADriverPtr = (ExaDriverPtr) xnfcalloc(sizeof(ExaDriverRec), 1))) {
 		pPS3->NoAccel = TRUE;
