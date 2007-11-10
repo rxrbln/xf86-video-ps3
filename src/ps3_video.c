@@ -17,7 +17,7 @@
 #include "damage.h"
 #include "dixstruct.h"
 #include "fourcc.h"
-#include "nouveau_reg.h"
+#include "nouveau_class.h"
 #include "ps3.h"
 #include "ps3_dma.h"
 

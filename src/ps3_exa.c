@@ -49,13 +49,465 @@
 #include "ps3.h"
 #include "ps3_dma.h"
 
-#include "nouveau_reg.h"
+#include <stdint.h>
+#include "nouveau_class.h"
+#include "nv_shaders.h"
 
 #include <sys/time.h>
 #include <string.h>
 
-//#define TRACE() ErrorF("%s\n", __FUNCTION__);
-#define TRACE()
+#define TRACE() ErrorF("%s\n", __FUNCTION__);
+//#define TRACE()
+
+
+#define PS3_UPPER_VRAM (1024 * 1024 * 254)
+
+static unsigned int endian( unsigned int v )
+{
+  return ( ( ( v >> 24 ) & 0xff ) << 0 ) |
+         ( ( ( v >> 16 ) & 0xff ) << 8 ) |
+         ( ( ( v >> 8 ) & 0xff ) << 16 ) |
+         ( ( ( v >> 0 ) & 0xff ) << 24 );
+}
+
+static unsigned int endian_fp( unsigned int v )
+{
+  return ( ( ( v >> 16 ) & 0xffff ) << 0 ) |
+         ( ( ( v >> 0 ) & 0xffff ) << 16 );
+         
+}
+
+static void prepare_ramin_read_line256(PS3Ptr pPS3, unsigned int addr)
+{
+	PS3DmaStart(pPS3, PS3ScaledImageChannel,  0x184, 1);
+	PS3DmaNext(pPS3, PS3DmaFB);
+	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x198, 1);
+	PS3DmaNext(pPS3, PS3ContextSurfaces);
+	PS3DmaStart(pPS3, PS3ContextSurfacesChannel, 0x300, 1);
+	PS3DmaNext(pPS3, 0x0000000a );
+	PS3DmaStart(pPS3, PS3ContextSurfacesChannel, 0x30c, 1);
+	PS3DmaNext(pPS3, 0 );
+	PS3DmaStart(pPS3, PS3ContextSurfacesChannel, 0x304, 1);
+	PS3DmaNext(pPS3, 0x01000100);
+	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x2fc, 9);
+	PS3DmaNext(pPS3, 0x00000001);
+	PS3DmaNext(pPS3, 0x00000003);
+	PS3DmaNext(pPS3, 0x00000003);
+	PS3DmaNext(pPS3, 0x00000000);
+	PS3DmaNext(pPS3, 0x00010040); /* 64x1 */
+	PS3DmaNext(pPS3, 0x00000000);
+	PS3DmaNext(pPS3, 0x00010040); /* 64x1 */
+	PS3DmaNext(pPS3, 0x00100000);
+	PS3DmaNext(pPS3, 0x00100000);
+	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x400, 4 );
+	PS3DmaNext(pPS3, 0x00010040); /* 64x1 */
+	PS3DmaNext(pPS3, 0x00020100); /* pitch = 256, corner */
+	PS3DmaNext(pPS3, PS3_UPPER_VRAM + addr * 4);
+	PS3DmaNext(pPS3, 0x00000000);
+}
+
+static void prepare_ramin_write_line256(PS3Ptr pPS3, unsigned int addr)
+{
+	PS3DmaStart(pPS3, PS3ScaledImageChannel,  0x184, 1);
+	PS3DmaNext(pPS3, PS3DmaFB);
+	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x198, 1);
+	PS3DmaNext(pPS3, PS3ContextSurfaces);
+	PS3DmaStart(pPS3, PS3ContextSurfacesChannel, 0x300, 1);
+	PS3DmaNext(pPS3, 0x0000000a);
+	PS3DmaStart(pPS3, PS3ContextSurfacesChannel, 0x30c, 1);
+	PS3DmaNext(pPS3, PS3_UPPER_VRAM + addr * 4);
+	PS3DmaStart(pPS3, PS3ContextSurfacesChannel, 0x304, 1);
+	PS3DmaNext(pPS3, 0x01000100);
+	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x2fc, 9);
+	PS3DmaNext(pPS3, 0x00000001);
+	PS3DmaNext(pPS3, 0x00000003);
+	PS3DmaNext(pPS3, 0x00000003);
+	PS3DmaNext(pPS3, 0x00000000);
+	PS3DmaNext(pPS3, 0x00010040); /* 64x1 */
+	PS3DmaNext(pPS3, 0x00000000);
+	PS3DmaNext(pPS3, 0x00010040); /* 64x1 */
+	PS3DmaNext(pPS3, 0x00100000);
+	PS3DmaNext(pPS3, 0x00100000);
+	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x400, 4);
+	PS3DmaNext(pPS3, 0x00010040 ); /* 64x1 */
+	PS3DmaNext(pPS3, 0x00020100 ); /* pitch = 256, corner */
+	PS3DmaNext(pPS3, 0x00000000 );
+	PS3DmaNext(pPS3, 0x00000000 );
+}
+
+static void ramin_write_dword_to_dword_offset(PS3Ptr pPS3,
+					      CARD32 addr, CARD32 data)
+{
+	CARD32 off = addr & 63;
+	CARD32 *vram = (CARD32 *) pPS3->vram_base;
+
+	// copy aligned line to the begin of framebuffer
+	prepare_ramin_read_line256(pPS3, addr - off);
+	PS3DmaKickoff(pPS3);
+	PS3Sync(pPS3);
+
+	// wait for end of blit
+	// TODO: use notifier
+	usleep(1000);
+
+	// patch with data, GPU is little-endian
+	vram[off] = endian(data);
+
+	usleep(1000);
+
+	// copy data back
+	prepare_ramin_write_line256(pPS3, addr - off);
+	PS3DmaKickoff(pPS3);
+	PS3Sync(pPS3);
+
+	// wait for end of blit
+	// TODO: use notifier
+	usleep(1000);
+}
+
+static void NV40_LoadTex(PS3Ptr pPS3)
+{
+	CARD32 i;
+	CARD32 unit = 0;
+	CARD32 offset = 20 * 1024 * 1024;
+	CARD32 width = 128, height = 128;
+	unsigned char *fbmem = (unsigned char *) pPS3->vram_base;
+
+	for (i = 0; i < width * height * 4; i += 4 )
+	{
+		fbmem[i + offset + 0] = (rand() & 127); // A
+		fbmem[i + offset + 1] = 255; // R
+		fbmem[i + offset + 2] = 255;   // G
+		fbmem[i + offset + 3] = 0; // B
+	}
+
+	CARD32 swz =  
+	NV40TCL_TEX_SWIZZLE_S0_X_S1 | NV40TCL_TEX_SWIZZLE_S0_Y_S1 |
+  	NV40TCL_TEX_SWIZZLE_S0_Z_S1 | NV40TCL_TEX_SWIZZLE_S0_W_S1 |
+  	NV40TCL_TEX_SWIZZLE_S1_X_X | NV40TCL_TEX_SWIZZLE_S1_Y_Y |
+  	NV40TCL_TEX_SWIZZLE_S1_Z_Z | NV40TCL_TEX_SWIZZLE_S1_W_W;
+
+  	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_TEX_OFFSET(unit), 8);
+	PS3DmaNext(pPS3, offset);
+
+	PS3DmaNext(pPS3, 
+		   NV40TCL_TEX_FORMAT_FORMAT_A8R8G8B8 | 
+		   NV40TCL_TEX_FORMAT_LINEAR | 
+		   NV40TCL_TEX_FORMAT_DIMS_2D | 
+		   NV40TCL_TEX_FORMAT_DMA0 |
+		   NV40TCL_TEX_FORMAT_NO_BORDER | (0x8000) |
+		   (1 << NV40TCL_TEX_FORMAT_MIPMAP_COUNT_SHIFT));
+
+	PS3DmaNext(pPS3, 
+		   NV40TCL_TEX_WRAP_S_REPEAT |
+		   NV40TCL_TEX_WRAP_T_REPEAT |
+		   NV40TCL_TEX_WRAP_R_REPEAT);
+
+	PS3DmaNext(pPS3, NV40TCL_TEX_ENABLE_ENABLE);
+	PS3DmaNext(pPS3, swz);
+         
+	PS3DmaNext(pPS3, 
+		   NV40TCL_TEX_FILTER_MIN_LINEAR |
+		   NV40TCL_TEX_FILTER_MAG_LINEAR | 0x3fd6);
+	PS3DmaNext(pPS3, (width << 16) | height);
+	PS3DmaNext(pPS3, 0); /* border ARGB */
+ 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_TEX_SIZE1(unit), 1);
+
+	PS3DmaNext(pPS3, 
+		   (1 << NV40TCL_TEX_SIZE1_DEPTH_SHIFT) |
+		   width * 4);
+}
+
+static void NV40_LoadVtxProg(PS3Ptr pPS3, nv_vshader_t *shader)
+{
+	CARD32 i;
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VP_UPLOAD_FROM_ID, 1);
+	PS3DmaNext(pPS3, 0);
+
+	for (i = 0; i < shader->size; i += 4) 
+	{
+		PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VP_UPLOAD_INST(0), 4);
+		PS3DmaNext(pPS3, shader->data[i + 0]);
+		PS3DmaNext(pPS3, shader->data[i + 1]);
+		PS3DmaNext(pPS3, shader->data[i + 2]);
+		PS3DmaNext(pPS3, shader->data[i + 3]);
+	}
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VP_START_FROM_ID, 1);
+	PS3DmaNext(pPS3, 0);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VP_ATTRIB_EN, 2);
+	PS3DmaNext(pPS3, shader->vp_in_reg);
+	PS3DmaNext(pPS3, shader->vp_out_reg);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1478, 1);
+	PS3DmaNext(pPS3, 0);
+}
+
+static int NV40_LoadFragProg(PS3Ptr pPS3, nv_pshader_t *shader)
+{
+	CARD32 i;
+	CARD32 offset = 10 * 1024 * 1024;
+	CARD32 *fb = (CARD32 *) pPS3->vram_base;
+	CARD32 *fpmem = (CARD32 *) pPS3->fpMem;
+	static int next_hw_id_offset = 0;
+
+// TEMP
+	ErrorF("fb = %p fpmem = %p next = %d\n", fb, fpmem, next_hw_id_offset);
+
+	if (!shader->hw_id)
+	{
+		for (i = 0; i < shader->size; i++) {
+		   fpmem[next_hw_id_offset + i] = endian_fp(shader->data[i]);
+		   ErrorF("FP: %08x\n", fpmem[next_hw_id_offset + i]);
+		}
+		
+		shader->hw_id  = fpmem - fb;
+		shader->hw_id += next_hw_id_offset;
+		shader->hw_id *= 4;
+
+		next_hw_id_offset += shader->size;
+		next_hw_id_offset = (next_hw_id_offset + 63) & ~63;
+	}
+
+	ErrorF("frag prog 0x%x \n", shader->hw_id );
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_FP_ADDRESS, 1);
+	PS3DmaNext(pPS3,  shader->hw_id | NV40TCL_FP_ADDRESS_DMA0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_FP_CONTROL, 1);
+	PS3DmaNext(pPS3,
+		   (shader->num_regs << NV40TCL_FP_CONTROL_TEMP_COUNT_SHIFT));
+}
+
+#define CV_OUT( sx,sy, sz, tx, ty) do {                                \
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VTX_ATTR_4F_X(0), 4); \
+	PS3DmaFloat(pPS3, sx); PS3DmaFloat(pPS3, sy);                  \
+	PS3DmaFloat(pPS3, sz); PS3DmaFloat(pPS3, 1.0f);                \
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VTX_ATTR_2F_X(8), 2); \
+	PS3DmaFloat(pPS3, tx); PS3DmaFloat(pPS3, ty);                  \
+} while(0)
+
+static int NV40_EmitGeometry(PS3Ptr pPS3)
+{
+	CARD32 i;
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_BEGIN_END, 1);
+	PS3DmaNext(pPS3, NV40TCL_BEGIN_END_TRIANGLES);
+	float sin_tab[] = { 0, 0.866025403784439, -0.866025403784438 };
+	float cos_tab[] = { 1, 0.5, -0.5 };
+	static float t = 0;
+
+	t += 0.25;
+	
+	for( i = 0; i < 3; ++i )
+	{
+		float si = sin_tab[i];
+		float co = cos_tab[i];
+	    
+		float x1 = 200.0f + t, y1 = 80.0f;
+		float x2 = -200.0f, y2 = 10.0f;
+		float x3 = -200.0f, y3 = 150.0f;	    
+	    
+		CV_OUT( 256.0f + x1 * co + y1 * si,
+			256.0f - x1 * si + y1 * co,
+			1.0f, 0.5f, 0.0f  );
+		CV_OUT( 256.0f + x2 * co + y2 * si,
+			256.0f - x2 * si + y2 * co,
+			0.0f, 0.0f, 1.0f  );
+		CV_OUT( 256.0f + x3 * co + y3 * si,
+			256.0f - x3 * si + y3 * co,
+			0.0f, 1.0f, 1.0f  );
+	}
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_BEGIN_END, 1);
+	PS3DmaNext(pPS3, NV40TCL_BEGIN_END_STOP);
+}
+
+static void create_TCL_instance(PS3Ptr pPS3)
+{
+	ramin_write_dword_to_dword_offset(pPS3, 0x64cb8, PS3TCL);
+	//engine zero, offset
+	ramin_write_dword_to_dword_offset(pPS3, 0x64cb9, 0x00105020);
+
+	//0x40 for NV40, 0x97 - 3D engine
+	ramin_write_dword_to_dword_offset(pPS3, 0x1d020 * 4 + 0, 0x00004097 );
+	ramin_write_dword_to_dword_offset(pPS3, 0x1d020 * 4 + 1, 0x00000000 );
+	//endianness
+	ramin_write_dword_to_dword_offset(pPS3, 0x1d020 * 4 + 2, 0x01000000 );
+	ramin_write_dword_to_dword_offset(pPS3, 0x1d020 * 4 + 3, 0x00000000 );
+	ramin_write_dword_to_dword_offset(pPS3, 0x1d020 * 4 + 4, 0x00000000 );
+	ramin_write_dword_to_dword_offset(pPS3, 0x1d020 * 4 + 5, 0x00000000 );
+	ramin_write_dword_to_dword_offset(pPS3, 0x1d020 * 4 + 6, 0x00000000 );
+	ramin_write_dword_to_dword_offset(pPS3, 0x1d020 * 4 + 7, 0x00000000 );
+}
+
+static void bind_TCL_instance(PS3Ptr pPS3)
+{
+	PS3DmaStart(pPS3, PS3TCLChannel, 0, 1);
+	PS3DmaNext(pPS3, PS3TCL);
+}
+
+#define SF(bf) (NV40TCL_BLEND_FUNC_SRC_RGB_##bf |                              \
+                NV40TCL_BLEND_FUNC_SRC_ALPHA_##bf)
+#define DF(bf) (NV40TCL_BLEND_FUNC_DST_RGB_##bf |                              \
+                NV40TCL_BLEND_FUNC_DST_ALPHA_##bf)
+
+static void init_TCL_instance(PS3Ptr pPS3)
+{
+	int i;
+	CARD32 NvDmaNotifier0 = 0x66604200;
+	CARD32 *fbmem = (CARD32 *) pPS3->vram_base;
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DMA_NOTIFY, 1);
+	PS3DmaNext(pPS3, NvDmaNotifier0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DMA_TEXTURE0, 1);
+	PS3DmaNext(pPS3, PS3DmaFB);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DMA_COLOR0, 2);
+	PS3DmaNext(pPS3, PS3DmaFB);
+	PS3DmaNext(pPS3, PS3DmaFB);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DMA_ZETA, 1 );
+	PS3DmaNext(pPS3, PS3DmaFB);
+
+	/* voodoo */
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1ea4, 3);
+	PS3DmaNext(pPS3, 0x00000010);
+	PS3DmaNext(pPS3, 0x01000100);
+	PS3DmaNext(pPS3, 0xff800006);
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1fc4, 1);
+	PS3DmaNext(pPS3, 0x06144321);
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1fc8, 2);
+	PS3DmaNext(pPS3, 0xedcba987);
+	PS3DmaNext(pPS3, 0x00000021);
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1fd0, 1);
+	PS3DmaNext(pPS3, 0x00171615);
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1fd4, 1);
+	PS3DmaNext(pPS3, 0x001b1a19);
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1ef8, 1);
+	PS3DmaNext(pPS3, 0x0020ffff);
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1d64, 1);
+	PS3DmaNext(pPS3, 0x00d30000);
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1e94, 1);
+	PS3DmaNext(pPS3, 0x00000001);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VIEWPORT_TRANSLATE_X, 8);
+	PS3DmaFloat(pPS3, 0.0);
+	PS3DmaFloat(pPS3, 0.0);
+	PS3DmaFloat(pPS3, 0.0);
+	PS3DmaFloat(pPS3, 0.0);
+	PS3DmaFloat(pPS3, 1.0);
+	PS3DmaFloat(pPS3, 1.0);
+	PS3DmaFloat(pPS3, 1.0);
+	PS3DmaFloat(pPS3, 0.0);
+
+	/* default 3D state */
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_STENCIL_FRONT_ENABLE, 1);
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_STENCIL_BACK_ENABLE, 1);
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_ALPHA_TEST_ENABLE, 1);
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DEPTH_WRITE_ENABLE, 1);
+	PS3DmaNext(pPS3, 1);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DEPTH_TEST_ENABLE, 1);
+	PS3DmaNext(pPS3, 1); 
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DEPTH_FUNC, 1);
+	PS3DmaNext(pPS3, NV40TCL_DEPTH_FUNC_LESS); 
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_COLOR_MASK, 1);
+	PS3DmaNext(pPS3, 0x01010101); /* TR,TR,TR,TR */
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CULL_FACE_ENABLE, 1);
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_BLEND_ENABLE, 5);
+	PS3DmaNext(pPS3, 1);
+	PS3DmaNext(pPS3, SF(SRC_ALPHA));
+	PS3DmaNext(pPS3, DF(ONE_MINUS_SRC_ALPHA));
+	PS3DmaNext(pPS3, 0);
+	PS3DmaNext(pPS3, NV40TCL_BLEND_EQUATION_ALPHA_FUNC_ADD |
+                         NV40TCL_BLEND_EQUATION_RGB_FUNC_ADD);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_COLOR_LOGIC_OP_ENABLE, 2);
+	PS3DmaNext(pPS3, 0);
+	PS3DmaNext(pPS3, NV40TCL_COLOR_LOGIC_OP_COPY);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DITHER_ENABLE, 1);
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_SHADE_MODEL, 1);
+	PS3DmaNext(pPS3, NV40TCL_SHADE_MODEL_SMOOTH);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_POLYGON_OFFSET_FACTOR,2);
+	PS3DmaFloat(pPS3, 0.0);
+	PS3DmaFloat(pPS3, 0.0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_POLYGON_MODE_FRONT, 2);
+	PS3DmaNext(pPS3, NV40TCL_POLYGON_MODE_FRONT_FILL);
+	PS3DmaNext(pPS3, NV40TCL_POLYGON_MODE_BACK_FILL);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_POLYGON_STIPPLE_PATTERN(0), 0x20);
+	for (i=0;i<0x20;i++)
+		PS3DmaNext(pPS3, 0xFFFFFFFF);
+	for (i=0;i<16;i++) {
+		PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_TEX_ENABLE(i), 1);
+		PS3DmaNext(pPS3, 0);
+	}
+
+	PS3DmaStart(pPS3, PS3TCLChannel, 0x1d78, 1);
+	PS3DmaNext(pPS3, 0x110);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_RT_ENABLE, 1);
+	PS3DmaNext(pPS3, NV40TCL_RT_ENABLE_COLOR0);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_RT_HORIZ, 2);
+	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_SCISSOR_HORIZ, 2);
+	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VIEWPORT_HORIZ, 2);
+	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VIEWPORT_CLIP_HORIZ(0), 2);
+	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaNext(pPS3, (512 << 16));
+
+// TEMP
+	ErrorF("linelength = %d\n", pPS3->lineLength);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_ZETA_OFFSET, 1);
+	PS3DmaNext(pPS3, 512 * 4);	
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_ZETA_PITCH, 1);
+	PS3DmaNext(pPS3, pPS3->lineLength);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_RT_FORMAT, 3);
+	PS3DmaNext(pPS3, NV40TCL_RT_FORMAT_TYPE_LINEAR |
+		   NV40TCL_RT_FORMAT_ZETA_Z16 |
+		   NV40TCL_RT_FORMAT_COLOR_A8R8G8B8);
+	PS3DmaNext(pPS3, pPS3->lineLength);
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_COLOR, 1 );
+	PS3DmaNext(pPS3, 0x0);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_DEPTH, 1 );
+	PS3DmaNext(pPS3, 0xffff);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_BUFFERS,1 );
+	PS3DmaNext(pPS3,
+		   NV40TCL_CLEAR_BUFFERS_COLOR_B |
+		   NV40TCL_CLEAR_BUFFERS_COLOR_G |
+		   NV40TCL_CLEAR_BUFFERS_COLOR_R |
+		   NV40TCL_CLEAR_BUFFERS_COLOR_A |
+		   NV40TCL_CLEAR_BUFFERS_STENCIL |
+		   NV40TCL_CLEAR_BUFFERS_DEPTH);
+}
+
+static void setup_TCL(PS3Ptr pPS3)
+{
+	memset((void *) pPS3->vram_base, 0xff, pPS3->vram_size);
+
+	create_TCL_instance(pPS3);
+	bind_TCL_instance(pPS3);
+	init_TCL_instance(pPS3);
+
+	NV40_LoadTex(pPS3);
+	NV40_LoadVtxProg(pPS3, &nv40_vp);
+	NV40_LoadFragProg(pPS3, &nv30_fp);
+
+	PS3DmaKickoff(pPS3);
+	PS3Sync(pPS3);
+}
 
 Bool
 PS3AccelGetCtxSurf2DFormatFromPixmap(PixmapPtr pPix, int *fmt_ret)
@@ -139,8 +591,10 @@ PS3AccelSetCtxSurf2D(PixmapPtr psPix, PixmapPtr pdPix, int format)
 
 static void PS3ExaWaitMarker(ScreenPtr pScreen, int marker)
 {
-//	ErrorF("%s\n", __FUNCTION__);
-	PS3Sync(xf86Screens[pScreen->myNum]);
+	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+	PS3Ptr pPS3 = PS3PTR(pScrn);
+
+	PS3Sync(pPS3);
 }
 
 static Bool PS3ExaPrepareSolid(PixmapPtr pPixmap,
@@ -175,7 +629,12 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int srcFormat, dstFormat;
 
-//	ErrorF("%s %d %d %d\n", __FUNCTION__, dx, dy, alu);
+	int w, h;
+
+	w = (pSrcPixmap->drawable.width+3) & ~3;
+	h = pSrcPixmap->drawable.height;
+
+	ErrorF("%s %d %d %d %d %d\n", __FUNCTION__, dx, dy, w, h, alu);
 
 	if (pSrcPixmap->drawable.bitsPerPixel !=
 			pDstPixmap->drawable.bitsPerPixel)
@@ -222,7 +681,6 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 		| (STRETCH_BLIT_SRC_FORMAT_ORIGIN_CORNER << 16)
 		| (STRETCH_BLIT_SRC_FORMAT_FILTER_POINT_SAMPLE << 24);
 	copy_src_offset = PS3AccelGetPixmapOffset(pSrcPixmap);
-/*
 
 	ErrorF("%s sfmt=%d dfmt=%d dpitch=%d spitch=%d soffset=0x%x doffset=0x%x\n", __FUNCTION__,
 	       srcFormat, dstFormat,
@@ -230,7 +688,6 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 	       exaGetPixmapPitch(pSrcPixmap),
 	       PS3AccelGetPixmapOffset(pSrcPixmap),
 	       PS3AccelGetPixmapOffset(pDstPixmap));
-*/
 	return TRUE;
 }
 
@@ -244,10 +701,10 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 {
 	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
 	PS3Ptr pPS3 = PS3PTR(pScrn);
-/*
+
 	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
 	       srcX, srcY, dstX, dstY, width, height);
-*/
+
 	PS3DmaStart(pPS3, PS3ScaledImageChannel, STRETCH_BLIT_CLIP_POINT, 6);
 	PS3DmaNext (pPS3, (dstY << 16) | dstX);
 	PS3DmaNext (pPS3, (height  << 16) | width);
@@ -264,6 +721,28 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	PS3DmaNext (pPS3, ((srcY*16 + 8) << 16) | (srcX*16 + 8));
 
 	PS3DmaKickoff(pPS3); 
+
+//TEMP
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_COLOR, 1 );
+	PS3DmaNext(pPS3, 0x0);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_DEPTH, 1 );
+	PS3DmaNext(pPS3, 0xffff);
+
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_BUFFERS,1 );
+	PS3DmaNext(pPS3,
+		   NV40TCL_CLEAR_BUFFERS_COLOR_B |
+		   NV40TCL_CLEAR_BUFFERS_COLOR_G |
+		   NV40TCL_CLEAR_BUFFERS_COLOR_R |
+		   NV40TCL_CLEAR_BUFFERS_COLOR_A |
+		   NV40TCL_CLEAR_BUFFERS_STENCIL |
+		   NV40TCL_CLEAR_BUFFERS_DEPTH);
+	PS3DmaKickoff(pPS3); 
+	PS3Sync(pPS3);
+
+	NV40_EmitGeometry(pPS3);
+	PS3DmaKickoff(pPS3); 
+
 }
 
 static void PS3ExaDoneCopy (PixmapPtr pDstPixmap)
@@ -279,7 +758,7 @@ static void PS3ExaDoneCopy (PixmapPtr pDstPixmap)
 	PS3DmaStart(pPS3, PS3ContextSurfacesChannel, SURFACE_FORMAT, 1);
 	PS3DmaNext (pPS3, format);
 
-	PS3Sync(pScrn);
+	PS3Sync(pPS3);
 
 	exaMarkSync(pDstPixmap->drawable.pScreen);
 }
@@ -319,7 +798,7 @@ PS3AccelDownloadM2MF(ScrnInfoPtr pScrn, char *dst, CARD32 src_offset,
 		PS3DmaNext (pPS3, 0);
 
 		PS3DmaKickoff(pPS3);
-		PS3Sync(pScrn);
+		PS3Sync(pPS3);
 
 		if (dst_pitch == line_len) {
 			memcpy(dst, src, dst_pitch * lc);
@@ -412,7 +891,7 @@ PS3AccelUploadM2MF(ScrnInfoPtr pScrn, CARD32 dst_offset, const char *src,
 		PS3DmaNext (pPS3, 0);
 
 		PS3DmaKickoff(pPS3);
-		PS3Sync(pScrn);
+		PS3Sync(pPS3);
 
 		dst_offset += lc * dst_pitch;
 		line_count -= lc;
@@ -430,8 +909,8 @@ static Bool PS3UploadToScreen(PixmapPtr pDst,
 	int dst_offset, dst_pitch, cpp;
 	char *dst;
 
-//	ErrorF("%s (%d,%d-%dx%d) from %p pitch %d\n", __FUNCTION__,
-//	       x, y, w, h, src, src_pitch);
+	ErrorF("%s (%d,%d-%dx%d) from %p pitch %d\n", __FUNCTION__,
+	       x, y, w, h, src, src_pitch);
 
 	dst_offset = PS3AccelGetPixmapOffset(pDst);
 	dst_pitch  = exaGetPixmapPitch(pDst);
@@ -640,6 +1119,15 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	pPS3->EXADriverPtr->PrepareComposite = PS3PrepareComposite;
 	pPS3->EXADriverPtr->Composite        = PS3Composite;
 	pPS3->EXADriverPtr->DoneComposite    = PS3DoneComposite;
+
+	/* Reserve FB memory for fragment programs */
+	pPS3->fpMem = (CARD32 *) (((unsigned long ) pPS3->vram_base +
+			   pPS3->EXADriverPtr->offScreenBase + 63) & ~63);
+	pPS3->EXADriverPtr->offScreenBase	+= 0x1000;
+	pPS3->EXADriverPtr->memorySize		-= 0x1000;
+
+	/* Initialize 3D context */
+	setup_TCL(pPS3);
 
 	return exaDriverInit(pScreen, pPS3->EXADriverPtr);
 }

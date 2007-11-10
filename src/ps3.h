@@ -30,13 +30,14 @@ typedef struct _PS3Rec {
 	CARD32 xv_base;
 	CARD32 xv_size;
 	XF86VideoAdaptorPtr             blitAdaptor;
-	void				(*DMAKickoffCallback)(PS3Ptr pPS3);
 
 	CARD32				*dmaBase;
 	CARD32				dmaPut;
 	CARD32				dmaCurrent;
 	CARD32				dmaFree;
 	CARD32				dmaMax;
+
+	CARD32				*fpMem;
 
 	volatile CARD32			*FIFO;
 	Bool				LockedUp;

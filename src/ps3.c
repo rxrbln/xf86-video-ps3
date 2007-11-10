@@ -525,6 +525,7 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	}
 
 	pPS3->fbstart = pPS3->fbmem + pPS3->fboff;
+	pPS3->lineLength = fbdevHWGetLineLength(pScrn);
 
 	if (pScrn->bitsPerPixel == 32) {
 		ret = fbScreenInit(pScreen, pPS3->fbstart, pScrn->virtualX,

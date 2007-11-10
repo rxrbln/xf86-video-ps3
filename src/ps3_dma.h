@@ -59,6 +59,7 @@ enum PS3Instances {
 	PS3DmaNotifier0         = 0x66604200,
 	PS3DmaFB		= 0xfeed0000,
 	PS3DmaXDR		= 0xfeed0001,
+	PS3TCL			= 0xfeed0003,
 };
 
 /* Channels to which instances are bound by the hypervisor */
@@ -67,11 +68,12 @@ enum PS3Channels {
 	PS3MemFormatDownloadChannel	= 2,
 	PS3ContextSurfacesChannel	= 3,
 	PS3ScaledImageChannel		= 6,
+	PS3TCLChannel			= 7,
 };
 
 extern void PS3DmaStart(PS3Ptr pPS3, CARD32 subchannel, CARD32 tag, int size);
-extern void PS3DmaKickoffCallback(PS3Ptr pPS3);
-extern void PS3Sync(ScrnInfoPtr pScrn);
+extern void PS3DmaKickoff(PS3Ptr pPS3);
+extern void PS3Sync(PS3Ptr pPS3);
 
 #define PS3DmaNext(pPS3, data) do {                        \
 	PS3DEBUG("\tPS3DmaNext: @0x%08x  0x%08x\n", (unsigned)((pPS3)->dmaCurrent),(unsigned)(data));           \
@@ -85,6 +87,30 @@ extern void PS3Sync(ScrnInfoPtr pScrn);
 	} c;                       \
 	c.v = (data);              \
 	PS3DmaNext((pPS3), c.u);     \
+} while(0)
+
+#define BEGIN_RING(obj,mthd,size) do {                                        \
+	PS3DmaStart(pPS3, (obj), (mthd), (size));                             \
+} while(0)
+
+#define OUT_RING(data) do {                                                   \
+	PS3DEBUG("\tOUT_RING  : @0x%08x  0x%08x\n",                           \
+		(unsigned)(pPS3->dmaCurrent), (unsigned)(data));              \
+	pPS3->dmaBase[pNv->dmaCurrent++] = (data);                            \
+} while(0)
+
+#define OUT_RINGf(data) do {                                                  \
+	union { float v; uint32_t u; } c;                                     \
+	c.v = (data);                                                         \
+	OUT_RING(c.u);                                                        \
+} while(0)
+
+#define WAIT_RING(size) do {                                                  \
+	PS3Sync(pPS3, (size));                                                \
+} while(0)
+
+#define FIRE_RING() do {                                                      \
+	PS3DmaKickoff(pPS3);                                          \
 } while(0)
 
 
@@ -112,6 +138,8 @@ extern void PS3Sync(ScrnInfoPtr pScrn);
   mem_barrier();                     \
 }
 #endif
+
+
 
 
 

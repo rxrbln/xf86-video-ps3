@@ -16,12 +16,6 @@ void PS3DmaKickoff(PS3Ptr pPS3)
 	}
 }
 
-void PS3DmaKickoffCallback(PS3Ptr pPS3)
-{
-	PS3DmaKickoff(pPS3);
-	pPS3->DMAKickoffCallback = NULL;
-}
-
 /* There is a HW race condition with videoram command buffers.
  * You can't jump to the location of your put offset.  We write put
  * at the jump offset + SKIPS dwords with noop padding in between
@@ -40,6 +34,7 @@ void PS3DmaWait (ScrnInfoPtr pScrn, int size)
 	size++;
 
 	t_start = GetTimeInMillis();
+
 	while(pPS3->dmaFree < size) {
 		dmaGet = READ_GET(pPS3);
 
@@ -52,7 +47,7 @@ void PS3DmaWait (ScrnInfoPtr pScrn, int size)
 						WRITE_PUT(pPS3, SKIPS + 1);
 					do {
 						if (GetTimeInMillis() - t_start > 2000)
-							PS3Sync(pScrn);
+							PS3Sync(pPS3);
 						dmaGet = READ_GET(pPS3);
 					} while(dmaGet <= SKIPS);
 				}
@@ -60,12 +55,14 @@ void PS3DmaWait (ScrnInfoPtr pScrn, int size)
 
 				pPS3->dmaCurrent = pPS3->dmaPut = SKIPS;
 				pPS3->dmaFree = dmaGet - (SKIPS + 1);
+
 			}
 		} else
 			pPS3->dmaFree = dmaGet - pPS3->dmaCurrent - 1;
 
 		if (GetTimeInMillis() - t_start > 2000)
-			PS3Sync(pScrn);
+			PS3Sync(pPS3);
+
 	}
 }
 
@@ -81,10 +78,8 @@ static void PS3DumpLockupInfo(PS3Ptr pPS3)
 }
 
 static void
-PS3LockedUp(ScrnInfoPtr pScrn)
+PS3LockedUp(PS3Ptr pPS3)
 {
-	PS3Ptr pPS3 = PS3PTR(pScrn);
-
 	/* avoid re-entering FatalError on shutdown */
 	if (pPS3->LockedUp)
 		return;
@@ -96,25 +91,21 @@ PS3LockedUp(ScrnInfoPtr pScrn)
 		   pPS3->dmaPut, READ_PUT(pPS3), READ_GET(pPS3));
 }
 
-void PS3Sync(ScrnInfoPtr pScrn)
+void PS3Sync(PS3Ptr pPS3)
 {
-	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int t_start, timeout = 2000;
 
 //	ErrorF("%s\n", __FUNCTION__);
 
-	if(pPS3->NoAccel)
+	if (pPS3->NoAccel)
 		return;
-
-	if(pPS3->DMAKickoffCallback)
-		(*pPS3->DMAKickoffCallback)(pPS3);
 
 	/* Wait for entire FIFO to be processed */
 	t_start = GetTimeInMillis();
 	while((GetTimeInMillis() - t_start) < timeout &&
 			(READ_GET(pPS3) != pPS3->dmaPut));
 	if ((GetTimeInMillis() - t_start) >= timeout) {
-		PS3LockedUp(pScrn);
+		PS3LockedUp(pPS3);
 		return;
 	}
 }

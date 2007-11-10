@@ -27,6 +27,9 @@
 #include "xf86xv.h"
 #include "ps3.h"
 #include "ps3_gpu.h"
+#include "ps3_dma.h"
+#include "nouveau_class.h"
+#include "nv_shaders.h"
 
 #define DEV_VFB		"/dev/fb0"
 #define DEV_GPU_VRAM	"/dev/ps3gpu_vram"
