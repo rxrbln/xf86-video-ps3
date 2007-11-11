@@ -31,9 +31,11 @@
 #include "ps3_dma.h"
 
 #include <stdint.h>
-
 #include "nouveau_class.h"
 #include "nv_shaders.h"
+
+#include <sys/time.h>
+#include <string.h>
 
 typedef struct nv_pict_surface_format {
 	int	 pict_fmt;
@@ -107,8 +109,8 @@ static nv_shader_t *nv40_fp_map[NV40EXA_FPID_MAX] = {
 
 static nv_shader_t *nv40_fp_map_a8[NV40EXA_FPID_MAX];
 
-static void
-NV40EXAHackupA8Shaders(ScrnInfoPtr pScrn)
+void
+NV40EXAHackupA8Shaders(void)
 {
 	int s;
 
@@ -194,7 +196,7 @@ NV40_GetPictOpRec(int op)
 	return &NV40PictOp[op];
 }
 
-#if 0
+#if 1
 #define FALLBACK(fmt,args...) do {					\
 	ErrorF("FALLBACK %s:%d> " fmt, __func__, __LINE__, ##args);	\
 	return FALSE;							\
@@ -204,84 +206,17 @@ NV40_GetPictOpRec(int op)
 	return FALSE;              \
 } while(0)
 #endif
+//#define TRACE() ErrorF("%s:%d\n", __func__, __LINE__)
+#define TRACE()
 
-static void
-NV40_LoadVtxProg(ScrnInfoPtr pScrn, nv_shader_t *shader)
-{
-	NVPtr pNv = NVPTR(pScrn);
-	static int next_hw_id = 0;
-	int i;
-
-	if (!shader->hw_id) {
-		shader->hw_id = next_hw_id;
-
-		BEGIN_RING(Nv3D, NV40TCL_VP_UPLOAD_FROM_ID, 1);
-		OUT_RING  ((shader->hw_id));
-		for (i=0; i<shader->size; i+=4) {
-			BEGIN_RING(Nv3D, NV40TCL_VP_UPLOAD_INST(0), 4);
-			OUT_RING  (shader->data[i + 0]);
-			OUT_RING  (shader->data[i + 1]);
-			OUT_RING  (shader->data[i + 2]);
-			OUT_RING  (shader->data[i + 3]);
-			next_hw_id++;
-		}
-	}
-
-	BEGIN_RING(Nv3D, NV40TCL_VP_START_FROM_ID, 1);
-	OUT_RING  ((shader->hw_id));
-
-	BEGIN_RING(Nv3D, NV40TCL_VP_ATTRIB_EN, 2);
-	OUT_RING  (shader->card_priv.NV30VP.vp_in_reg);
-	OUT_RING  (shader->card_priv.NV30VP.vp_out_reg);
-}
-
-static void
-NV40_LoadFragProg(ScrnInfoPtr pScrn, nv_shader_t *shader)
-{
-	NVPtr pNv = NVPTR(pScrn);
-	static NVAllocRec *fp_mem = NULL;
-	static int next_hw_id_offset = 0;
-
-	if (!fp_mem) {
-		fp_mem = NVAllocateMemory(pNv, NOUVEAU_MEM_FB, 0x1000);
-		if (!fp_mem) {
-			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-				   "Couldn't alloc fragprog buffer!\n");
-			return;
-		}
-	}
-
-	if (!shader->hw_id) {
-		uint32_t *map = fp_mem->map + next_hw_id_offset;
-		int i;
-
-		for (i = 0; i < shader->size; i++) {
-			uint32_t data = shader->data[i];
-#if (X_BYTE_ORDER != X_LITTLE_ENDIAN)
-			data = ((data >> 16) | ((data & 0xffff) << 16));
-#endif
-			map[i] = data;
-		}
-
-		shader->hw_id  = fp_mem->offset;
-		shader->hw_id += next_hw_id_offset;
-
-		next_hw_id_offset += (shader->size * sizeof(uint32_t));
-		next_hw_id_offset = (next_hw_id_offset + 63) & ~63;
-	}
-
-	BEGIN_RING(Nv3D, NV40TCL_FP_ADDRESS, 1);
-	OUT_RING  (shader->hw_id | NV40TCL_FP_ADDRESS_DMA0);
-	BEGIN_RING(Nv3D, NV40TCL_FP_CONTROL, 1);
-	OUT_RING  (shader->card_priv.NV30FP.num_regs <<
-		   NV40TCL_FP_CONTROL_TEMP_COUNT_SHIFT);
-}
+extern void NV40_LoadVtxProg(PS3Ptr pPS3, nv_shader_t *shader);
+extern int NV40_LoadFragProg(PS3Ptr pPS3, nv_shader_t *shader);
 
 static void
 NV40_SetupBlend(ScrnInfoPtr pScrn, nv_pict_op_t *blend,
-		PictFormatShort dest_format, Bool component_alpha)
+		CARD32 dest_format, Bool component_alpha)
 {
-	NVPtr pNv = NVPTR(pScrn);
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 	uint32_t sblend, dblend;
 
 	sblend = blend->src_card_op;
@@ -312,10 +247,10 @@ NV40_SetupBlend(ScrnInfoPtr pScrn, nv_pict_op_t *blend,
 	}
 
 	if (sblend == SF(ONE) && dblend == DF(ZERO)) {
-		BEGIN_RING(Nv3D, NV40TCL_BLEND_ENABLE, 1);
+		BEGIN_RING(PS3TCLChannel, NV40TCL_BLEND_ENABLE, 1);
 		OUT_RING  (0);
 	} else {
-		BEGIN_RING(Nv3D, NV40TCL_BLEND_ENABLE, 5);
+		BEGIN_RING(PS3TCLChannel, NV40TCL_BLEND_ENABLE, 5);
 		OUT_RING  (1);
 		OUT_RING  (sblend);
 		OUT_RING  (dblend);
@@ -328,7 +263,7 @@ NV40_SetupBlend(ScrnInfoPtr pScrn, nv_pict_op_t *blend,
 static Bool
 NV40EXATexture(ScrnInfoPtr pScrn, PixmapPtr pPix, PicturePtr pPict, int unit)
 {
-	NVPtr pNv = NVPTR(pScrn);
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 	nv_pict_texture_format_t *fmt;
 	NV40EXA_STATE;
 
@@ -336,8 +271,8 @@ NV40EXATexture(ScrnInfoPtr pScrn, PixmapPtr pPix, PicturePtr pPict, int unit)
 	if (!fmt)
 		return FALSE;
 
-	BEGIN_RING(Nv3D, NV40TCL_TEX_OFFSET(unit), 8);
-	OUT_RING  (NVAccelGetPixmapOffset(pPix));
+	BEGIN_RING(PS3TCLChannel, NV40TCL_TEX_OFFSET(unit), 8);
+	OUT_RING  (PS3AccelGetPixmapOffset(pPix));
 	OUT_RING  (fmt->card_fmt | NV40TCL_TEX_FORMAT_LINEAR |
 		   NV40TCL_TEX_FORMAT_DIMS_2D | NV40TCL_TEX_FORMAT_DMA0 |
 		   NV40TCL_TEX_FORMAT_NO_BORDER | (0x8000) |
@@ -364,7 +299,7 @@ NV40EXATexture(ScrnInfoPtr pScrn, PixmapPtr pPix, PicturePtr pPict, int unit)
 	}
 	OUT_RING  ((pPix->drawable.width << 16) | pPix->drawable.height);
 	OUT_RING  (0); /* border ARGB */
-	BEGIN_RING(Nv3D, NV40TCL_TEX_SIZE1(unit), 1);
+	BEGIN_RING(PS3TCLChannel, NV40TCL_TEX_SIZE1(unit), 1);
 	OUT_RING  ((1 << NV40TCL_TEX_SIZE1_DEPTH_SHIFT) |
 		   (uint32_t)exaGetPixmapPitch(pPix));
 
@@ -376,9 +311,9 @@ NV40EXATexture(ScrnInfoPtr pScrn, PixmapPtr pPix, PicturePtr pPict, int unit)
 }
 
 static Bool
-NV40_SetupSurface(ScrnInfoPtr pScrn, PixmapPtr pPix, PictFormatShort format)
+NV40_SetupSurface(ScrnInfoPtr pScrn, PixmapPtr pPix, CARD32 format)
 {
-	NVPtr pNv = NVPTR(pScrn);
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 	nv_pict_surface_format_t *fmt;
 
 	fmt = NV40_GetPictSurfaceFormat(format);
@@ -389,12 +324,12 @@ NV40_SetupSurface(ScrnInfoPtr pScrn, PixmapPtr pPix, PictFormatShort format)
 
         uint32_t pitch = (uint32_t)exaGetPixmapPitch(pPix);
 
-	BEGIN_RING(Nv3D, NV40TCL_RT_FORMAT, 3);
+	BEGIN_RING(PS3TCLChannel, NV40TCL_RT_FORMAT, 3);
 	OUT_RING  (NV40TCL_RT_FORMAT_TYPE_LINEAR |
 		   NV40TCL_RT_FORMAT_ZETA_Z24S8 |
 		   fmt->card_fmt);
 	OUT_RING  (pitch);
-	OUT_RING  (NVAccelGetPixmapOffset(pPix));
+	OUT_RING  (PS3AccelGetPixmapOffset(pPix));
 
 	return TRUE;
 }
@@ -405,6 +340,8 @@ NV40EXACheckCompositeTexture(PicturePtr pPict)
 	nv_pict_texture_format_t *fmt;
 	int w = pPict->pDrawable->width;
 	int h = pPict->pDrawable->height;
+
+	TRACE();
 
 	if ((w > 4096) || (h > 4096))
 		FALLBACK("picture too large, %dx%d\n", w, h);
@@ -432,6 +369,8 @@ NV40EXACheckComposite(int op, PicturePtr psPict,
 {
 	nv_pict_surface_format_t *fmt;
 	nv_pict_op_t *opr;
+
+	TRACE();
 
 	opr = NV40_GetPictOpRec(op);
 	if (!opr)
@@ -465,10 +404,12 @@ NV40EXAPrepareComposite(int op, PicturePtr psPict,
 				PixmapPtr  pdPix)
 {
 	ScrnInfoPtr pScrn = xf86Screens[psPix->drawable.pScreen->myNum];
-	NVPtr pNv = NVPTR(pScrn);
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 	nv_pict_op_t *blend;
 	int fpid = NV40EXA_FPID_PASS_COL0;
 	NV40EXA_STATE;
+
+	TRACE();
 
 	blend = NV40_GetPictOpRec(op);
 
@@ -479,7 +420,7 @@ NV40EXAPrepareComposite(int op, PicturePtr psPict,
 	NV40_SetupSurface(pScrn, pdPix, pdPict->format);
 	NV40EXATexture(pScrn, psPix, psPict, 0);
 
-	NV40_LoadVtxProg(pScrn, &nv40_vp_exa_render);
+	NV40_LoadVtxProg(pPS3, &nv40_vp_exa_render);
 	if (pmPict) {
 		NV40EXATexture(pScrn, pmPix, pmPict, 1);
 
@@ -500,19 +441,19 @@ NV40EXAPrepareComposite(int op, PicturePtr psPict,
 	}
 
 	if (pdPict->format == PICT_a8)
-		NV40_LoadFragProg(pScrn, nv40_fp_map_a8[fpid]);
+		NV40_LoadFragProg(pPS3, nv40_fp_map_a8[fpid]);
 	else
-		NV40_LoadFragProg(pScrn, nv40_fp_map[fpid]);
+		NV40_LoadFragProg(pPS3, nv40_fp_map[fpid]);
 
 	/* Appears to be some kind of cache flush, needed here at least
 	 * sometimes.. funky text rendering otherwise :)
 	 */
-	BEGIN_RING(Nv3D, NV40TCL_TEX_CACHE_CTL, 1);
+	BEGIN_RING(PS3TCLChannel, NV40TCL_TEX_CACHE_CTL, 1);
 	OUT_RING  (2);
-	BEGIN_RING(Nv3D, NV40TCL_TEX_CACHE_CTL, 1);
+	BEGIN_RING(PS3TCLChannel, NV40TCL_TEX_CACHE_CTL, 1);
 	OUT_RING  (1);
 
-	BEGIN_RING(Nv3D, NV40TCL_BEGIN_END, 1);
+	BEGIN_RING(PS3TCLChannel, NV40TCL_BEGIN_END, 1);
 	OUT_RING  (NV40TCL_BEGIN_END_QUADS);
 
 	return TRUE;
@@ -541,16 +482,16 @@ NV40EXATransformCoord(PictTransformPtr t, int x, int y, float sx, float sy,
 }
 
 #define CV_OUTm(sx,sy,mx,my,dx,dy) do {                                        \
-	BEGIN_RING(Nv3D, NV40TCL_VTX_ATTR_2F_X(8), 4);                         \
+	BEGIN_RING(PS3TCLChannel, NV40TCL_VTX_ATTR_2F_X(8), 4);                         \
 	OUT_RINGf ((sx)); OUT_RINGf ((sy));                                    \
 	OUT_RINGf ((mx)); OUT_RINGf ((my));                                    \
-	BEGIN_RING(Nv3D, NV40TCL_VTX_ATTR_2I(0), 1);                           \
+	BEGIN_RING(PS3TCLChannel, NV40TCL_VTX_ATTR_2I(0), 1);                           \
 	OUT_RING  (((dy)<<16)|(dx));                                           \
 } while(0)
 #define CV_OUT(sx,sy,dx,dy) do {                                               \
-	BEGIN_RING(Nv3D, NV40TCL_VTX_ATTR_2F_X(8), 2);                         \
+	BEGIN_RING(PS3TCLChannel, NV40TCL_VTX_ATTR_2F_X(8), 2);                         \
 	OUT_RINGf ((sx)); OUT_RINGf ((sy));                                    \
-	BEGIN_RING(Nv3D, NV40TCL_VTX_ATTR_2I(0), 1);                           \
+	BEGIN_RING(PS3TCLChannel, NV40TCL_VTX_ATTR_2I(0), 1);                           \
 	OUT_RING  (((dy)<<16)|(dx));                                           \
 } while(0)
 
@@ -561,10 +502,12 @@ NV40EXAComposite(PixmapPtr pdPix, int srcX , int srcY,
 				  int width, int height)
 {
 	ScrnInfoPtr pScrn = xf86Screens[pdPix->drawable.pScreen->myNum];
-	NVPtr pNv = NVPTR(pScrn);
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 	float sX0, sX1, sY0, sY1;
 	float mX0, mX1, mY0, mY1;
 	NV40EXA_STATE;
+
+	TRACE();
 
 	NV40EXATransformCoord(state->unit[0].transform, srcX, srcY,
 			      state->unit[0].width,
@@ -600,140 +543,8 @@ void
 NV40EXADoneComposite(PixmapPtr pdPix)
 {
 	ScrnInfoPtr pScrn = xf86Screens[pdPix->drawable.pScreen->myNum];
-	NVPtr pNv = NVPTR(pScrn);
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 
-	BEGIN_RING(Nv3D, NV40TCL_BEGIN_END, 1);
+	BEGIN_RING(PS3TCLChannel, NV40TCL_BEGIN_END, 1);
 	OUT_RING  (NV40TCL_BEGIN_END_STOP);
-}
-
-#define NV40TCL_CHIPSET_4X_MASK 0x00000baf
-#define NV44TCL_CHIPSET_4X_MASK 0x00005450
-Bool
-NVAccelInitNV40TCL(ScrnInfoPtr pScrn)
-{
-	NVPtr pNv = NVPTR(pScrn);
-	static int have_object = FALSE;
-	uint32_t class = 0, chipset;
-	int i;
-
-	NV40EXAHackupA8Shaders(pScrn);
-
-	chipset = (nvReadMC(pNv, 0) >> 20) & 0xff;
-	if ((chipset & 0xf0) != NV_ARCH_40)
-		return TRUE;
-	chipset &= 0xf;
-
-	if (NV40TCL_CHIPSET_4X_MASK & (1<<chipset))
-		class = NV40TCL;
-	else if (NV44TCL_CHIPSET_4X_MASK & (1<<chipset))
-		class = NV44TCL;
-	else {
-		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-			   "NV40EXA: Unknown chipset NV4%1x\n", chipset);
-		return FALSE;
-	}
-
-	if (!have_object) {
-		if (!NVDmaCreateContextObject(pNv, Nv3D, class))
-			return FALSE;
-		have_object = TRUE;
-	}
-
-	BEGIN_RING(Nv3D, NV40TCL_DMA_NOTIFY, 1);
-	OUT_RING  (NvDmaNotifier0);
-	BEGIN_RING(Nv3D, NV40TCL_DMA_TEXTURE0, 1);
-	OUT_RING  (NvDmaFB);
-	BEGIN_RING(Nv3D, NV40TCL_DMA_COLOR0, 2);
-	OUT_RING  (NvDmaFB);
-	OUT_RING  (NvDmaFB);
-
-	/* voodoo */
-	BEGIN_RING(Nv3D, 0x1ea4, 3);
-	OUT_RING  (0x00000010);
-	OUT_RING  (0x01000100);
-	OUT_RING  (0xff800006);
-	BEGIN_RING(Nv3D, 0x1fc4, 1);
-	OUT_RING  (0x06144321);
-	BEGIN_RING(Nv3D, 0x1fc8, 2);
-	OUT_RING  (0xedcba987);
-	OUT_RING  (0x00000021);
-	BEGIN_RING(Nv3D, 0x1fd0, 1);
-	OUT_RING  (0x00171615);
-	BEGIN_RING(Nv3D, 0x1fd4, 1);
-	OUT_RING  (0x001b1a19);
-	BEGIN_RING(Nv3D, 0x1ef8, 1);
-	OUT_RING  (0x0020ffff);
-	BEGIN_RING(Nv3D, 0x1d64, 1);
-	OUT_RING  (0x00d30000);
-	BEGIN_RING(Nv3D, 0x1e94, 1);
-	OUT_RING  (0x00000001);
-
-	BEGIN_RING(Nv3D, NV40TCL_VIEWPORT_TRANSLATE_X, 8);
-	OUT_RINGf (0.0);
-	OUT_RINGf (0.0);
-	OUT_RINGf (0.0);
-	OUT_RINGf (0.0);
-	OUT_RINGf (1.0);
-	OUT_RINGf (1.0);
-	OUT_RINGf (1.0);
-	OUT_RINGf (0.0);
-
-	/* default 3D state */
-	/*XXX: replace with the same state that the DRI emits on startup */
-	BEGIN_RING(Nv3D, NV40TCL_STENCIL_FRONT_ENABLE, 1);
-	OUT_RING  (0);
-	BEGIN_RING(Nv3D, NV40TCL_STENCIL_BACK_ENABLE, 1);
-	OUT_RING  (0);
-	BEGIN_RING(Nv3D, NV40TCL_ALPHA_TEST_ENABLE, 1);
-	OUT_RING  (0);
-	BEGIN_RING(Nv3D, NV40TCL_DEPTH_WRITE_ENABLE, 2);
-	OUT_RING  (0);
-	OUT_RING  (0); 
-	BEGIN_RING(Nv3D, NV40TCL_COLOR_MASK, 1);
-	OUT_RING  (0x01010101); /* TR,TR,TR,TR */
-	BEGIN_RING(Nv3D, NV40TCL_CULL_FACE_ENABLE, 1);
-	OUT_RING  (0);
-	BEGIN_RING(Nv3D, NV40TCL_BLEND_ENABLE, 1);
-	OUT_RING  (0);
-	BEGIN_RING(Nv3D, NV40TCL_COLOR_LOGIC_OP_ENABLE, 2);
-	OUT_RING  (0);
-	OUT_RING  (NV40TCL_COLOR_LOGIC_OP_COPY);
-	BEGIN_RING(Nv3D, NV40TCL_DITHER_ENABLE, 1);
-	OUT_RING  (0);
-	BEGIN_RING(Nv3D, NV40TCL_SHADE_MODEL, 1);
-	OUT_RING  (NV40TCL_SHADE_MODEL_SMOOTH);
-	BEGIN_RING(Nv3D, NV40TCL_POLYGON_OFFSET_FACTOR,2);
-	OUT_RINGf (0.0);
-	OUT_RINGf (0.0);
-	BEGIN_RING(Nv3D, NV40TCL_POLYGON_MODE_FRONT, 2);
-	OUT_RING  (NV40TCL_POLYGON_MODE_FRONT_FILL);
-	OUT_RING  (NV40TCL_POLYGON_MODE_BACK_FILL);
-	BEGIN_RING(Nv3D, NV40TCL_POLYGON_STIPPLE_PATTERN(0), 0x20);
-	for (i=0;i<0x20;i++)
-		OUT_RING  (0xFFFFFFFF);
-	for (i=0;i<16;i++) {
-		BEGIN_RING(Nv3D, NV40TCL_TEX_ENABLE(i), 1);
-		OUT_RING  (0);
-	}
-
-	BEGIN_RING(Nv3D, 0x1d78, 1);
-	OUT_RING  (0x110);
-
-	BEGIN_RING(Nv3D, NV40TCL_RT_ENABLE, 1);
-	OUT_RING  (NV40TCL_RT_ENABLE_COLOR0);
-
-	BEGIN_RING(Nv3D, NV40TCL_RT_HORIZ, 2);
-	OUT_RING  ((4096 << 16));
-	OUT_RING  ((4096 << 16));
-	BEGIN_RING(Nv3D, NV40TCL_SCISSOR_HORIZ, 2);
-	OUT_RING  ((4096 << 16));
-	OUT_RING  ((4096 << 16));
-	BEGIN_RING(Nv3D, NV40TCL_VIEWPORT_HORIZ, 2);
-	OUT_RING  ((4096 << 16));
-	OUT_RING  ((4096 << 16));
-	BEGIN_RING(Nv3D, NV40TCL_VIEWPORT_CLIP_HORIZ(0), 2);
-	OUT_RING  ((4095 << 16));
-	OUT_RING  ((4095 << 16));
-
-	return TRUE;
 }

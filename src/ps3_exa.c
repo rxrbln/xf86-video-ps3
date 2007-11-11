@@ -291,7 +291,7 @@ static void NV40_LoadTex(PS3Ptr pPS3)
 		   width * 4);
 }
 
-static void NV40_LoadVtxProg(PS3Ptr pPS3, nv_shader_t *shader)
+void NV40_LoadVtxProg(PS3Ptr pPS3, nv_shader_t *shader)
 {
 	CARD32 i;
 
@@ -318,7 +318,7 @@ static void NV40_LoadVtxProg(PS3Ptr pPS3, nv_shader_t *shader)
 	PS3DmaNext(pPS3, 0);
 }
 
-static int NV40_LoadFragProg(PS3Ptr pPS3, nv_shader_t *shader)
+int NV40_LoadFragProg(PS3Ptr pPS3, nv_shader_t *shader)
 {
 	CARD32 i;
 	CARD32 offset = 10 * 1024 * 1024;
@@ -438,10 +438,11 @@ static void bind_TCL_instance(PS3Ptr pPS3)
 #define DF(bf) (NV40TCL_BLEND_FUNC_DST_RGB_##bf |                              \
                 NV40TCL_BLEND_FUNC_DST_ALPHA_##bf)
 
-static void init_TCL_instance(PS3Ptr pPS3)
+static void init_TCL_instance(ScrnInfoPtr pScrn)
 {
-	int i;
+	PS3Ptr pPS3 = PS3PTR(pScrn);
 	CARD32 *fbmem = (CARD32 *) pPS3->vram_base;
+	int i;
 
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DMA_NOTIFY, 1);
 	PS3DmaNext(pPS3, PS3DmaNotifier);
@@ -450,7 +451,6 @@ static void init_TCL_instance(PS3Ptr pPS3)
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DMA_COLOR0, 2);
 	PS3DmaNext(pPS3, PS3DmaFB);
 	PS3DmaNext(pPS3, PS3DmaFB);
-
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DMA_ZETA, 1 );
 	PS3DmaNext(pPS3, PS3DmaFB);
 
@@ -492,12 +492,9 @@ static void init_TCL_instance(PS3Ptr pPS3)
 	PS3DmaNext(pPS3, 0);
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_ALPHA_TEST_ENABLE, 1);
 	PS3DmaNext(pPS3, 0);
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DEPTH_WRITE_ENABLE, 1);
-	PS3DmaNext(pPS3, 1);
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DEPTH_TEST_ENABLE, 1);
-	PS3DmaNext(pPS3, 1); 
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DEPTH_FUNC, 1);
-	PS3DmaNext(pPS3, NV40TCL_DEPTH_FUNC_LESS); 
+	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_DEPTH_WRITE_ENABLE, 2);
+	PS3DmaNext(pPS3, 0);
+	PS3DmaNext(pPS3, 0); 
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_COLOR_MASK, 1);
 	PS3DmaNext(pPS3, 0x01010101); /* TR,TR,TR,TR */
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CULL_FACE_ENABLE, 1);
@@ -537,20 +534,20 @@ static void init_TCL_instance(PS3Ptr pPS3)
 	PS3DmaNext(pPS3, NV40TCL_RT_ENABLE_COLOR0);
 
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_RT_HORIZ, 2);
-	PS3DmaNext(pPS3, (512 << 16));
-	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaNext(pPS3, (pScrn->virtualX << 16));
+	PS3DmaNext(pPS3, (pScrn->virtualY << 16));
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_SCISSOR_HORIZ, 2);
-	PS3DmaNext(pPS3, (512 << 16));
-	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaNext(pPS3, (pScrn->virtualX << 16));
+	PS3DmaNext(pPS3, (pScrn->virtualY << 16));
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VIEWPORT_HORIZ, 2);
-	PS3DmaNext(pPS3, (512 << 16));
-	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaNext(pPS3, (pScrn->virtualX << 16));
+	PS3DmaNext(pPS3, (pScrn->virtualY << 16));
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VIEWPORT_CLIP_HORIZ(0), 2);
-	PS3DmaNext(pPS3, (512 << 16));
-	PS3DmaNext(pPS3, (512 << 16));
+	PS3DmaNext(pPS3, (pScrn->virtualX << 16));
+	PS3DmaNext(pPS3, (pScrn->virtualY << 16));
 
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_ZETA_OFFSET, 1);
-	PS3DmaNext(pPS3, 512 * 4);	
+	PS3DmaNext(pPS3, 0);
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_ZETA_PITCH, 1);
 	PS3DmaNext(pPS3, pPS3->lineLength);
 
@@ -560,29 +557,17 @@ static void init_TCL_instance(PS3Ptr pPS3)
 		   NV40TCL_RT_FORMAT_COLOR_A8R8G8B8);
 	PS3DmaNext(pPS3, pPS3->lineLength);
 	PS3DmaNext(pPS3, 0);
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_COLOR, 1 );
-	PS3DmaNext(pPS3, 0x0);
-
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_DEPTH, 1 );
-	PS3DmaNext(pPS3, 0xffff);
-
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_BUFFERS,1 );
-	PS3DmaNext(pPS3,
-		   NV40TCL_CLEAR_BUFFERS_COLOR_B |
-		   NV40TCL_CLEAR_BUFFERS_COLOR_G |
-		   NV40TCL_CLEAR_BUFFERS_COLOR_R |
-		   NV40TCL_CLEAR_BUFFERS_COLOR_A |
-		   NV40TCL_CLEAR_BUFFERS_STENCIL |
-		   NV40TCL_CLEAR_BUFFERS_DEPTH);
 }
 
-static void setup_TCL(PS3Ptr pPS3)
+static void setup_TCL(ScrnInfoPtr pScrn)
 {
+	PS3Ptr pPS3 = PS3PTR(pScrn);
+
 	create_DmaNotifier_instance(pPS3);
 
 	create_TCL_instance(pPS3);
 	bind_TCL_instance(pPS3);
-	init_TCL_instance(pPS3);
+	init_TCL_instance(pScrn);
 
 	NV40_LoadTex(pPS3);
 	NV40_LoadVtxProg(pPS3, &nv40_vp);
@@ -810,7 +795,7 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	PS3DmaKickoff(pPS3); 
 
 // TEMP
-#if 1
+#if 0
 	PS3NotifierReset(pPS3);
 	ErrorF("xnotifier = %08x,%08x,%08x,%08x\n",
 	       pPS3->dmaNotifier[0],
@@ -834,24 +819,7 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	       pPS3->dmaNotifier[2],
 	       pPS3->dmaNotifier[3]);
 
-//TEMP
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_COLOR, 1 );
-	PS3DmaNext(pPS3, 0x0);
-
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_DEPTH, 1 );
-	PS3DmaNext(pPS3, 0xffff);
-
-	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_BUFFERS,1 );
-	PS3DmaNext(pPS3,
-		   NV40TCL_CLEAR_BUFFERS_COLOR_B |
-		   NV40TCL_CLEAR_BUFFERS_COLOR_G |
-		   NV40TCL_CLEAR_BUFFERS_COLOR_R |
-		   NV40TCL_CLEAR_BUFFERS_COLOR_A |
-		   NV40TCL_CLEAR_BUFFERS_STENCIL |
-		   NV40TCL_CLEAR_BUFFERS_DEPTH);
-	PS3DmaKickoff(pPS3); 
-	PS3Sync(pPS3);
-
+// TEMP
 	NV40_EmitGeometry(pPS3);
 	PS3DmaKickoff(pPS3); 
 #endif
@@ -1202,6 +1170,22 @@ static void PS3DoneComposite (PixmapPtr pDst)
 	exaMarkSync(pDst->drawable.pScreen);
 }
 
+extern Bool NV40EXACheckComposite(int op, PicturePtr psPict,
+				  PicturePtr pmPict,
+				  PicturePtr pdPict);
+extern Bool NV40EXAPrepareComposite(int op, PicturePtr psPict,
+				    PicturePtr pmPict,
+				    PicturePtr pdPict,
+				    PixmapPtr  psPix,
+				    PixmapPtr  pmPix,
+				    PixmapPtr  pdPix);
+extern void NV40EXAComposite(PixmapPtr pdPix,
+			     int srcX , int srcY,
+			     int maskX, int maskY,
+			     int dstX , int dstY,
+			     int width, int height);
+extern void NV40EXADoneComposite(PixmapPtr pdPix);
+
 Bool PS3ExaInit(ScreenPtr pScreen) 
 {
 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
@@ -1219,7 +1203,7 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 
 	pPS3->EXADriverPtr->memoryBase		= (void *) pPS3->vram_base;
 	pPS3->EXADriverPtr->offScreenBase	=
-		pScrn->virtualX * pScrn->virtualY*(pScrn->bitsPerPixel/8); 
+		pScrn->virtualX * pScrn->virtualY *(pScrn->bitsPerPixel/8); 
 	pPS3->EXADriverPtr->memorySize		= pPS3->vram_size;
 	pPS3->EXADriverPtr->pixmapOffsetAlign	= 256; 
 	pPS3->EXADriverPtr->pixmapPitchAlign	= 64; 
@@ -1241,10 +1225,15 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	pPS3->EXADriverPtr->Solid = PS3ExaSolid;
 	pPS3->EXADriverPtr->DoneSolid = PS3ExaDoneSolid;
 
-	pPS3->EXADriverPtr->CheckComposite   = PS3CheckComposite;
-	pPS3->EXADriverPtr->PrepareComposite = PS3PrepareComposite;
-	pPS3->EXADriverPtr->Composite        = PS3Composite;
-	pPS3->EXADriverPtr->DoneComposite    = PS3DoneComposite;
+//	pPS3->EXADriverPtr->CheckComposite   = PS3CheckComposite;
+//	pPS3->EXADriverPtr->PrepareComposite = PS3PrepareComposite;
+//	pPS3->EXADriverPtr->Composite        = PS3Composite;
+//	pPS3->EXADriverPtr->DoneComposite    = PS3DoneComposite;
+
+	pPS3->EXADriverPtr->CheckComposite   = NV40EXACheckComposite;
+	pPS3->EXADriverPtr->PrepareComposite = NV40EXAPrepareComposite;
+	pPS3->EXADriverPtr->Composite        = NV40EXAComposite;
+	pPS3->EXADriverPtr->DoneComposite    = NV40EXADoneComposite;
 
 	/* Reserve FB memory for DMA notifier and fragment programs */
 	pPS3->dmaNotifier = (CARD32 *) (((unsigned long ) pPS3->vram_base +
@@ -1254,7 +1243,7 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	pPS3->EXADriverPtr->memorySize		-= 0x1000;
 
 	/* Initialize 3D context */
-	setup_TCL(pPS3);
+	setup_TCL(pScrn);
 
 	return exaDriverInit(pScreen, pPS3->EXADriverPtr);
 }
