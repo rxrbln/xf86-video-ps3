@@ -1,123 +1,82 @@
-#include "nv_include.h"
+#include "xf86.h"
+#include "exa.h"
+#include "xf86xv.h"
+#include "ps3.h"
+#include "ps3_dma.h"
 
-#define NV_NOTIFIER_SIZE                                                      32
-#define NV_NOTIFY_TIME_0                                              0x00000000
-#define NV_NOTIFY_TIME_1                                              0x00000004
-#define NV_NOTIFY_RETURN_VALUE                                        0x00000008
-#define NV_NOTIFY_STATE                                               0x0000000C
-#define NV_NOTIFY_STATE_STATUS_MASK                                   0xFF000000
-#define NV_NOTIFY_STATE_STATUS_SHIFT                                          24
-#define NV_NOTIFY_STATE_STATUS_COMPLETED                                    0x00
-#define NV_NOTIFY_STATE_STATUS_IN_PROCESS                                   0x01
-#define NV_NOTIFY_STATE_ERROR_CODE_MASK                               0x0000FFFF
-#define NV_NOTIFY_STATE_ERROR_CODE_SHIFT                                       0
+#include <stdint.h>
 
-#define NOTIFIER(__v) \
-	NVPtr pNv = NVPTR(pScrn); \
-	volatile uint32_t *__v = (void*)pNv->NotifierBlock + notifier->offset
-
-struct drm_nouveau_notifierobj_alloc *
-NVNotifierAlloc(ScrnInfoPtr pScrn, uint32_t handle)
-{
-	NVPtr pNv = NVPTR(pScrn);
-	struct drm_nouveau_notifierobj_alloc *notifier;
-	int ret;
-
-	notifier = xcalloc(1, sizeof(*notifier));
-	if (!notifier) {
-		NVNotifierDestroy(pScrn, notifier);
-		return NULL;
-	}
-
-	notifier->channel = pNv->fifo.channel;
-	notifier->handle  = handle;
-	notifier->count   = 1;
-	ret = drmCommandWriteRead(pNv->drm_fd, DRM_NOUVEAU_NOTIFIEROBJ_ALLOC,
-				  notifier, sizeof(*notifier));
-	if (ret) {
-		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-			   "Failed to create notifier 0x%08x: %d\n",
-			   handle, ret);
-		NVNotifierDestroy(pScrn, notifier);
-		return NULL;
-	}
-
-	return notifier;
-}
+#define PS3_NOTIFY_TIME_0                  0x00000000
+#define PS3_NOTIFY_TIME_1                  0x00000004
+#define PS3_NOTIFY_RETURN_VALUE            0x00000008
+#define PS3_NOTIFY_STATE                   0x0000000C
+#define PS3_NOTIFY_STATE_STATUS_MASK       0xFF000000
+#define PS3_NOTIFY_STATE_STATUS_SHIFT              24
+#define PS3_NOTIFY_STATE_STATUS_COMPLETED        0x00
+#define PS3_NOTIFY_STATE_STATUS_IN_PROCESS       0x01
+#define PS3_NOTIFY_STATE_ERROR_CODE_MASK   0x0000FFFF
+#define PS3_NOTIFY_STATE_ERROR_CODE_SHIFT           0
 
 void
-NVNotifierDestroy(ScrnInfoPtr pScrn,
-		  struct drm_nouveau_notifierobj_alloc *notifier)
+PS3NotifierReset(PS3Ptr pPS3)
 {
-	if (notifier) {
-		/*XXX: destroy notifier object */
-		xfree(notifier);
-	}
+	volatile CARD32 *n = pPS3->dmaNotifier;
+
+	n[PS3_NOTIFY_TIME_0      /4] =
+	n[PS3_NOTIFY_TIME_1      /4] =
+	n[PS3_NOTIFY_RETURN_VALUE/4] = 0;
+	n[PS3_NOTIFY_STATE       /4] =
+		(PS3_NOTIFY_STATE_STATUS_IN_PROCESS <<
+					PS3_NOTIFY_STATE_STATUS_SHIFT);
 }
 
-void
-NVNotifierReset(ScrnInfoPtr pScrn,
-		struct drm_nouveau_notifierobj_alloc *notifier)
+CARD32
+PS3NotifierStatus(PS3Ptr pPS3)
 {
-	NOTIFIER(n);
+	volatile CARD32 *n = pPS3->dmaNotifier;
 
-	n[NV_NOTIFY_TIME_0      /4] =
-	n[NV_NOTIFY_TIME_1      /4] =
-	n[NV_NOTIFY_RETURN_VALUE/4] = 0;
-	n[NV_NOTIFY_STATE       /4] = (NV_NOTIFY_STATE_STATUS_IN_PROCESS <<
-				       NV_NOTIFY_STATE_STATUS_SHIFT);
+	return (n[PS3_NOTIFY_STATE/4]) >> PS3_NOTIFY_STATE_STATUS_SHIFT;
 }
 
-uint32_t
-NVNotifierStatus(ScrnInfoPtr pScrn,
-		 struct drm_nouveau_notifierobj_alloc *notifier)
+CARD32
+PS3NotifierErrorCode(PS3Ptr pPS3)
 {
-	NOTIFIER(n);
+	volatile CARD32 *n = pPS3->dmaNotifier;
 
-	return n[NV_NOTIFY_STATE/4] >> NV_NOTIFY_STATE_STATUS_SHIFT;
+	return (n[PS3_NOTIFY_STATE/4]) & PS3_NOTIFY_STATE_ERROR_CODE_MASK;
 }
 
-uint32_t
-NVNotifierErrorCode(ScrnInfoPtr pScrn,
-		    struct drm_nouveau_notifierobj_alloc *notifier)
+CARD32
+PS3NotifierReturnVal(PS3Ptr pPS3)
 {
-	NOTIFIER(n);
+	volatile CARD32 *n = pPS3->dmaNotifier;
 
-	return n[NV_NOTIFY_STATE/4] & NV_NOTIFY_STATE_ERROR_CODE_MASK;
-}
-
-uint32_t
-NVNotifierReturnVal(ScrnInfoPtr pScrn,
-		    struct drm_nouveau_notifierobj_alloc *notifier)
-{
-	NOTIFIER(n);
-
-	return n[NV_NOTIFY_RETURN_VALUE/4];
+	return n[PS3_NOTIFY_RETURN_VALUE/4];
 }
 
 Bool
-NVNotifierWaitStatus(ScrnInfoPtr pScrn,
-		     struct drm_nouveau_notifierobj_alloc *notifier,
-		     unsigned int status, unsigned int timeout)
+PS3NotifierWaitStatus(PS3Ptr pPS3,
+		      unsigned int status, unsigned int timeout)
 {
-	NOTIFIER(n);
+	volatile CARD32 *n = pPS3->dmaNotifier;
 	unsigned int t_start, time = 0;
+	unsigned int val;
 
 	t_start = GetTimeInMillis();
 	while (time <= timeout) {
 #if 0
-		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-			   "N(0x%08x)/%d = 0x%08x/0x%08x/0x%08x/0x%08x\n",
-			   notifier->handle, time, n[0], n[1], n[2], n[3]);
+		ErrorF("N/%d = 0x%08x/0x%08x/0x%08x/0x%08x\n",
+		       time, n[0], n[1], n[2], n[3]);
 #endif
-		if (n[NV_NOTIFY_STATE/4] & NV_NOTIFY_STATE_ERROR_CODE_MASK) {
-			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-				   "Notifier returned error: 0x%04x\n",
-				   NVNotifierErrorCode(pScrn, notifier));
+		val = n[PS3_NOTIFY_STATE/4];
+
+		if (val & PS3_NOTIFY_STATE_ERROR_CODE_MASK) {
+			ErrorF("Notifier returned error: 0x%04x\n",
+			       PS3NotifierErrorCode(pPS3));
 			return FALSE;
 		}
 
-		if ((n[NV_NOTIFY_STATE/4] >> NV_NOTIFY_STATE_STATUS_SHIFT)
+		if ((val >> PS3_NOTIFY_STATE_STATUS_SHIFT)
 				== status)
 			return TRUE;
 
@@ -125,8 +84,7 @@ NVNotifierWaitStatus(ScrnInfoPtr pScrn,
 			time = GetTimeInMillis() - t_start;
 	}
 
-	xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-		   "Notifier (0x%08x) timeout!\n", notifier->handle);
+	ErrorF("Notifier timeout!\n");
 	return FALSE;
 }
 

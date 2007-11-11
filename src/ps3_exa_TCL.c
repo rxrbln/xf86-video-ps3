@@ -24,9 +24,15 @@
 #include "config.h"
 #endif
 
-#ifdef ENABLE_NV30EXA
+#include "xf86.h"
+#include "exa.h"
+#include "xf86xv.h"
+#include "ps3.h"
+#include "ps3_dma.h"
 
-#include "nv_include.h"
+#include <stdint.h>
+
+#include "nouveau_class.h"
 #include "nv_shaders.h"
 
 typedef struct nv_pict_surface_format {
@@ -731,5 +737,3 @@ NVAccelInitNV40TCL(ScrnInfoPtr pScrn)
 
 	return TRUE;
 }
-
-#endif /* ENABLE_NV30EXA */

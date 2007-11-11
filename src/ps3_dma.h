@@ -73,6 +73,14 @@ enum PS3Channels {
 	PS3TCLChannel			= 7,
 };
 
+
+void PS3NotifierReset(PS3Ptr pPS3);
+CARD32 PS3NotifierStatus(PS3Ptr pPS3);
+CARD32 PS3NotifierErrorCode(PS3Ptr pPS3);
+extern CARD32 PS3NotifierReturnVal(PS3Ptr pPS3);
+extern Bool PS3NotifierWaitStatus(PS3Ptr pPS3,
+		      unsigned int status, unsigned int timeout);
+
 extern void PS3DmaStart(PS3Ptr pPS3, CARD32 subchannel, CARD32 tag, int size);
 extern void PS3DmaKickoff(PS3Ptr pPS3);
 extern void PS3Sync(PS3Ptr pPS3);
@@ -83,11 +91,11 @@ extern void PS3Sync(PS3Ptr pPS3);
 } while(0)
 
 #define PS3DmaFloat(pPS3, data) do { \
-	union {                    \
-		float v;           \
-		CARD32 u;        \
-	} c;                       \
-	c.v = (data);              \
+	union {                      \
+		float v;             \
+		CARD32 u;            \
+	} c;                         \
+	c.v = (data);                \
 	PS3DmaNext((pPS3), c.u);     \
 } while(0)
 
@@ -98,7 +106,7 @@ extern void PS3Sync(PS3Ptr pPS3);
 #define OUT_RING(data) do {                                                   \
 	PS3DEBUG("\tOUT_RING  : @0x%08x  0x%08x\n",                           \
 		(unsigned)(pPS3->dmaCurrent), (unsigned)(data));              \
-	pPS3->dmaBase[pNv->dmaCurrent++] = (data);                            \
+	pPS3->dmaBase[pPS3->dmaCurrent++] = (data);                           \
 } while(0)
 
 #define OUT_RINGf(data) do {                                                  \
@@ -141,10 +149,20 @@ extern void PS3Sync(PS3Ptr pPS3);
 }
 #endif
 
+static inline unsigned int endian( unsigned int v )
+{
+  return ( ( ( v >> 24 ) & 0xff ) << 0 ) |
+         ( ( ( v >> 16 ) & 0xff ) << 8 ) |
+         ( ( ( v >> 8 ) & 0xff ) << 16 ) |
+         ( ( ( v >> 0 ) & 0xff ) << 24 );
+}
 
-
-
-
+static inline unsigned int endian_fp( unsigned int v )
+{
+  return ( ( ( v >> 16 ) & 0xffff ) << 0 ) |
+         ( ( ( v >> 0 ) & 0xffff ) << 16 );
+         
+}
 
 #define SURFACE_FORMAT                                              0x00000300
 #define SURFACE_FORMAT_Y8                                           0x00000001

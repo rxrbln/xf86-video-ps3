@@ -56,27 +56,11 @@
 #include <sys/time.h>
 #include <string.h>
 
-#define TRACE() ErrorF("%s\n", __FUNCTION__);
-//#define TRACE()
+//#define TRACE() ErrorF("%s\n", __FUNCTION__);
+#define TRACE()
 
 #define RAMIN_BASE    0x0ff80000 /* RAMIN address in upper video RAM */
 #define RAMHT_OFFSET  0x10000    /* offset of hash table relative to RAMIN */
-
-
-static unsigned int endian( unsigned int v )
-{
-  return ( ( ( v >> 24 ) & 0xff ) << 0 ) |
-         ( ( ( v >> 16 ) & 0xff ) << 8 ) |
-         ( ( ( v >> 8 ) & 0xff ) << 16 ) |
-         ( ( ( v >> 0 ) & 0xff ) << 24 );
-}
-
-static unsigned int endian_fp( unsigned int v )
-{
-  return ( ( ( v >> 16 ) & 0xffff ) << 0 ) |
-         ( ( ( v >> 0 ) & 0xffff ) << 16 );
-         
-}
 
 static void ramin_read_line256(PS3Ptr pPS3, unsigned int addr)
 {
@@ -166,7 +150,7 @@ static CARD32 hash_handle(int channel, CARD32 handle)
 	CARD32 hash = 0;
 	int i;
 
-	ErrorF("ch%d handle=0x%08x\n", channel, handle);
+//	ErrorF("ch%d handle=0x%08x\n", channel, handle);
 	
 	for (i = 32; i > 0; i -= RAMHT_BITS) {
 		hash ^= (handle & ((1 << RAMHT_BITS) - 1));
@@ -176,7 +160,7 @@ static CARD32 hash_handle(int channel, CARD32 handle)
 	hash ^= channel << (RAMHT_BITS - 4);
 	hash <<= 3;
 
-	ErrorF("hash=0x%08x\n", hash);
+//	ErrorF("hash=0x%08x\n", hash);
 	
 	return hash;
 }
@@ -307,7 +291,7 @@ static void NV40_LoadTex(PS3Ptr pPS3)
 		   width * 4);
 }
 
-static void NV40_LoadVtxProg(PS3Ptr pPS3, nv_vshader_t *shader)
+static void NV40_LoadVtxProg(PS3Ptr pPS3, nv_shader_t *shader)
 {
 	CARD32 i;
 
@@ -327,14 +311,14 @@ static void NV40_LoadVtxProg(PS3Ptr pPS3, nv_vshader_t *shader)
 	PS3DmaNext(pPS3, 0);
 
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VP_ATTRIB_EN, 2);
-	PS3DmaNext(pPS3, shader->vp_in_reg);
-	PS3DmaNext(pPS3, shader->vp_out_reg);
+	PS3DmaNext(pPS3, shader->card_priv.NV30VP.vp_in_reg);
+	PS3DmaNext(pPS3, shader->card_priv.NV30VP.vp_out_reg);
 
 	PS3DmaStart(pPS3, PS3TCLChannel, 0x1478, 1);
 	PS3DmaNext(pPS3, 0);
 }
 
-static int NV40_LoadFragProg(PS3Ptr pPS3, nv_pshader_t *shader)
+static int NV40_LoadFragProg(PS3Ptr pPS3, nv_shader_t *shader)
 {
 	CARD32 i;
 	CARD32 offset = 10 * 1024 * 1024;
@@ -343,13 +327,13 @@ static int NV40_LoadFragProg(PS3Ptr pPS3, nv_pshader_t *shader)
 	static int next_hw_id_offset = 0;
 
 // TEMP
-	ErrorF("fb = %p fpmem = %p next = %d\n", fb, fpmem, next_hw_id_offset);
+//	ErrorF("fb = %p fpmem = %p next = %d\n", fb, fpmem, next_hw_id_offset);
 
 	if (!shader->hw_id)
 	{
 		for (i = 0; i < shader->size; i++) {
 		   fpmem[next_hw_id_offset + i] = endian_fp(shader->data[i]);
-		   ErrorF("FP: %08x\n", fpmem[next_hw_id_offset + i]);
+//		   ErrorF("FP: %08x\n", fpmem[next_hw_id_offset + i]);
 		}
 		
 		shader->hw_id  = fpmem - fb;
@@ -360,12 +344,12 @@ static int NV40_LoadFragProg(PS3Ptr pPS3, nv_pshader_t *shader)
 		next_hw_id_offset = (next_hw_id_offset + 63) & ~63;
 	}
 
-	ErrorF("frag prog 0x%x \n", shader->hw_id );
+//	ErrorF("frag prog 0x%x \n", shader->hw_id );
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_FP_ADDRESS, 1);
 	PS3DmaNext(pPS3,  shader->hw_id | NV40TCL_FP_ADDRESS_DMA0);
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_FP_CONTROL, 1);
 	PS3DmaNext(pPS3,
-		   (shader->num_regs << NV40TCL_FP_CONTROL_TEMP_COUNT_SHIFT));
+		   (shader->card_priv.NV30FP.num_regs << NV40TCL_FP_CONTROL_TEMP_COUNT_SHIFT));
 }
 
 #define CV_OUT( sx,sy, sz, tx, ty) do {                                \
@@ -433,11 +417,6 @@ static void create_TCL_instance(PS3Ptr pPS3)
 static void create_DmaNotifier_instance(PS3Ptr pPS3)
 {
 	static unsigned long offset = 0x40170;
-
-// TEMP
-	ErrorF("create notifier instance to %08x\n",
-	       (unsigned long) pPS3->dmaNotifier -
-	       (unsigned long) pPS3->vram_base);
 
 	ramin_write_ramht_entry(pPS3, PS3DmaNotifier, offset, 1, 0);
 	ramin_write_dma_entry(pPS3, offset,
@@ -569,9 +548,6 @@ static void init_TCL_instance(PS3Ptr pPS3)
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_VIEWPORT_CLIP_HORIZ(0), 2);
 	PS3DmaNext(pPS3, (512 << 16));
 	PS3DmaNext(pPS3, (512 << 16));
-
-// TEMP
-	ErrorF("linelength = %d\n", pPS3->lineLength);
 
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_ZETA_OFFSET, 1);
 	PS3DmaNext(pPS3, 512 * 4);	
@@ -741,7 +717,7 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 	w = (pSrcPixmap->drawable.width+3) & ~3;
 	h = pSrcPixmap->drawable.height;
 
-	ErrorF("%s %d %d %d %d %d\n", __FUNCTION__, dx, dy, w, h, alu);
+//	ErrorF("%s %d %d %d %d %d\n", __FUNCTION__, dx, dy, w, h, alu);
 
 	if (pSrcPixmap->drawable.bitsPerPixel !=
 			pDstPixmap->drawable.bitsPerPixel)
@@ -793,12 +769,13 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 		| (STRETCH_BLIT_SRC_FORMAT_FILTER_POINT_SAMPLE << 24);
 	copy_src_offset = PS3AccelGetPixmapOffset(pSrcPixmap);
 
-	ErrorF("%s sfmt=%d dfmt=%d dpitch=%d spitch=%d soffset=0x%x doffset=0x%x\n", __FUNCTION__,
+/*	ErrorF("%s sfmt=%d dfmt=%d dpitch=%d spitch=%d soffset=0x%x doffset=0x%x\n", __FUNCTION__,
 	       srcFormat, dstFormat,
 	       exaGetPixmapPitch(pDstPixmap),
 	       exaGetPixmapPitch(pSrcPixmap),
 	       PS3AccelGetPixmapOffset(pSrcPixmap),
 	       PS3AccelGetPixmapOffset(pDstPixmap));
+*/
 	return TRUE;
 }
 
@@ -813,8 +790,8 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
-	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
-	       srcX, srcY, dstX, dstY, width, height);
+//	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
+//	       srcX, srcY, dstX, dstY, width, height);
 
 	PS3DmaStart(pPS3, PS3ScaledImageChannel, STRETCH_BLIT_CLIP_POINT, 6);
 	PS3DmaNext (pPS3, (dstY << 16) | dstX);
@@ -830,8 +807,32 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	PS3DmaNext (pPS3, copy_src_pitch);
 	PS3DmaNext (pPS3, copy_src_offset);
 	PS3DmaNext (pPS3, ((srcY*16 + 8) << 16) | (srcX*16 + 8));
+	PS3DmaKickoff(pPS3); 
+
+// TEMP
+#if 1
+	PS3NotifierReset(pPS3);
+	ErrorF("xnotifier = %08x,%08x,%08x,%08x\n",
+	       pPS3->dmaNotifier[0],
+	       pPS3->dmaNotifier[1],
+	       pPS3->dmaNotifier[2],
+	       pPS3->dmaNotifier[3]);
+	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x104, 1 );
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x100, 1 );
+	PS3DmaNext(pPS3, 0);
 
 	PS3DmaKickoff(pPS3); 
+	if (PS3NotifierWaitStatus(pPS3, 0, 2000))
+		ErrorF("success\n");
+	else
+		ErrorF("success\n");
+// TEMP
+	ErrorF("1notifier = %08x,%08x,%08x,%08x\n",
+	       pPS3->dmaNotifier[0],
+	       pPS3->dmaNotifier[1],
+	       pPS3->dmaNotifier[2],
+	       pPS3->dmaNotifier[3]);
 
 //TEMP
 	PS3DmaStart(pPS3, PS3TCLChannel, NV40TCL_CLEAR_VALUE_COLOR, 1 );
@@ -851,45 +852,9 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	PS3DmaKickoff(pPS3); 
 	PS3Sync(pPS3);
 
-// TEMP
-	ErrorF("0notifier = %08x,%08x,%08x,%08x\n",
-	       pPS3->dmaNotifier[0],
-	       pPS3->dmaNotifier[1],
-	       pPS3->dmaNotifier[2],
-	       pPS3->dmaNotifier[3]);
-
 	NV40_EmitGeometry(pPS3);
-
-// TEMP
-	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x104, 1 );
-	PS3DmaNext(pPS3, 0);
-	PS3DmaStart(pPS3, PS3ScaledImageChannel, 0x100, 1 );
-	PS3DmaNext(pPS3, 0);
-
 	PS3DmaKickoff(pPS3); 
-	PS3Sync(pPS3);
-
-// TEMP
-	ErrorF("1notifier = %08x,%08x,%08x,%08x\n",
-	       pPS3->dmaNotifier[0],
-	       pPS3->dmaNotifier[1],
-	       pPS3->dmaNotifier[2],
-	       pPS3->dmaNotifier[3]);
-	usleep(10000);
-// TEMP
-	ErrorF("2notifier = %08x,%08x,%08x,%08x\n",
-	       pPS3->dmaNotifier[0],
-	       pPS3->dmaNotifier[1],
-	       pPS3->dmaNotifier[2],
-	       pPS3->dmaNotifier[3]);
-
-// TEMP
-//	pPS3->dmaNotifier[0] = 0xdeadbeef;
-//	pPS3->dmaNotifier[1] = 0xf00dbabe;
-//	pPS3->dmaNotifier[2] = 0xcafecafe;
-//	pPS3->dmaNotifier[3] = 0xb00bb00b;
-
-
+#endif
 }
 
 static void PS3ExaDoneCopy (PixmapPtr pDstPixmap)
@@ -944,8 +909,15 @@ PS3AccelDownloadM2MF(ScrnInfoPtr pScrn, char *dst, CARD32 src_offset,
 		PS3DmaNext (pPS3, (1<<8)|1);
 		PS3DmaNext (pPS3, 0);
 
-		PS3DmaKickoff(pPS3);
-		PS3Sync(pPS3);
+		PS3NotifierReset(pPS3);
+                BEGIN_RING(PS3MemFormatDownloadChannel,
+			   NV_MEMORY_TO_MEMORY_FORMAT_NOTIFY, 1);
+                OUT_RING  (0);
+                BEGIN_RING(PS3MemFormatDownloadChannel, 0x100, 1);
+                OUT_RING  (0);
+                FIRE_RING();
+//                if (!PS3NotifierWaitStatus(pPS3, 0, 2000))
+//                        return FALSE;
 
 		if (dst_pitch == line_len) {
 			memcpy(dst, src, dst_pitch * lc);
@@ -975,8 +947,8 @@ static Bool PS3DownloadFromScreen(PixmapPtr pSrc,
 	int src_offset, src_pitch, cpp, offset;
 	const char *src;
 
-	ErrorF("%s (%d,%d-%dx%d) to %p pitch %d\n", __FUNCTION__,
-	       x, y, w, h, dst, dst_pitch);
+//	ErrorF("%s (%d,%d-%dx%d) to %p pitch %d\n", __FUNCTION__,
+//	       x, y, w, h, dst, dst_pitch);
 
 	src_offset = PS3AccelGetPixmapOffset(pSrc);
 	src_pitch  = exaGetPixmapPitch(pSrc);
@@ -1037,8 +1009,15 @@ PS3AccelUploadM2MF(ScrnInfoPtr pScrn, CARD32 dst_offset, const char *src,
 		PS3DmaNext (pPS3, (1<<8)|1);
 		PS3DmaNext (pPS3, 0);
 
-		PS3DmaKickoff(pPS3);
-		PS3Sync(pPS3);
+		PS3NotifierReset(pPS3);
+                BEGIN_RING(PS3MemFormatDownloadChannel,
+			   NV_MEMORY_TO_MEMORY_FORMAT_NOTIFY, 1);
+                OUT_RING  (0);
+                BEGIN_RING(PS3MemFormatDownloadChannel, 0x100, 1);
+                OUT_RING  (0);
+                FIRE_RING();
+//                if (!PS3NotifierWaitStatus(pPS3, 0, 2000))
+//                        return FALSE;
 
 		dst_offset += lc * dst_pitch;
 		line_count -= lc;
@@ -1056,8 +1035,8 @@ static Bool PS3UploadToScreen(PixmapPtr pDst,
 	int dst_offset, dst_pitch, cpp;
 	char *dst;
 
-	ErrorF("%s (%d,%d-%dx%d) from %p pitch %d\n", __FUNCTION__,
-	       x, y, w, h, src, src_pitch);
+//	ErrorF("%s (%d,%d-%dx%d) from %p pitch %d\n", __FUNCTION__,
+//	       x, y, w, h, src, src_pitch);
 
 	dst_offset = PS3AccelGetPixmapOffset(pDst);
 	dst_pitch  = exaGetPixmapPitch(pDst);
@@ -1273,18 +1252,6 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	pPS3->fpMem = (CARD32 *) ((unsigned long) pPS3->dmaNotifier + 64);
 	pPS3->EXADriverPtr->offScreenBase	+= 0x1000;
 	pPS3->EXADriverPtr->memorySize		-= 0x1000;
-
-// TEMP
-	pPS3->dmaNotifier[0] = 0x00000000;
-	pPS3->dmaNotifier[1] = 0x00000000;
-	pPS3->dmaNotifier[2] = 0x00000000;
-	pPS3->dmaNotifier[3] = endian(0x01000000);
-// TEMP
-	ErrorF("xnotifier = %08x,%08x,%08x,%08x\n",
-	       pPS3->dmaNotifier[0],
-	       pPS3->dmaNotifier[1],
-	       pPS3->dmaNotifier[2],
-	       pPS3->dmaNotifier[3]);
 
 	/* Initialize 3D context */
 	setup_TCL(pPS3);
