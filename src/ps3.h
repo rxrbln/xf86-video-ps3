@@ -37,6 +37,7 @@ typedef struct _PS3Rec {
 	CARD32				dmaFree;
 	CARD32				dmaMax;
 
+	CARD32				*dmaNotifier;
 	CARD32				*fpMem;
 
 	volatile CARD32			*FIFO;

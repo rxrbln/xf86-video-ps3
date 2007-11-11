@@ -59,7 +59,9 @@ enum PS3Instances {
 	PS3DmaNotifier0         = 0x66604200,
 	PS3DmaFB		= 0xfeed0000,
 	PS3DmaXDR		= 0xfeed0001,
-	PS3TCL			= 0xfeed0003,
+	PS3DmaNotifier		= 0xfeed0004,
+	PS3TCL			= 0xfeed0007,
+
 };
 
 /* Channels to which instances are bound by the hypervisor */
