@@ -406,12 +406,50 @@ static CARD32 PS3TCLObject[] = {
 	0x00000000,
 };
 
+static CARD32 PS3ImageBlitObject[] = {
+	0x0000009f, // 0x9f - Image Blit
+	0x00000000,
+	0x01000000, // big endian
+	0x00000000,
+	0x00000000,
+	0x00000000,
+	0x00000000,
+	0x00000000,
+};
+
+static CARD32 PS3RopObject[] = {
+	0x00000043, // 0x9f - Context Rop
+	0x00000000,
+	0x01000000, // big endian
+	0x00000000,
+	0x00000000,
+	0x00000000,
+	0x00000000,
+	0x00000000,
+};
+
 static void create_TCL_instance(PS3Ptr pPS3)
 {
 	static unsigned long offset = 0x50200;
 
 	ramin_write_ramht_entry(pPS3, PS3TCL, offset, 1, 0);
 	ramin_write_gfx_entry(pPS3, offset, PS3TCLObject);
+}
+
+static void create_Rop_instance(PS3Ptr pPS3)
+{
+	static unsigned long offset = 0x50220;
+
+	ramin_write_ramht_entry(pPS3, PS3Rop, offset, 1, 0);
+	ramin_write_gfx_entry(pPS3, offset, PS3RopObject);
+}
+
+static void create_ImageBlit_instance(PS3Ptr pPS3)
+{
+	static unsigned long offset = 0x50240;
+
+	ramin_write_ramht_entry(pPS3, PS3ImageBlit, offset, 1, 0);
+	ramin_write_gfx_entry(pPS3, offset, PS3ImageBlitObject);
 }
 
 static void create_DmaNotifier_instance(PS3Ptr pPS3)
@@ -425,6 +463,31 @@ static void create_DmaNotifier_instance(PS3Ptr pPS3)
 			      DMA_ACCESS_RW | DMA_TARGET_NV,
 			      (unsigned long) pPS3->dmaNotifier -
 			      (unsigned long) pPS3->vram_base, 63);
+}
+
+static void bind_ImageBlit_instance(PS3Ptr pPS3)
+{
+	PS3DmaStart(pPS3, PS3ImageBlitChannel, 0, 1);
+	PS3DmaNext(pPS3, PS3ImageBlit);
+}
+
+static void init_ImageBlit_instance(PS3Ptr pPS3)
+{
+        BEGIN_RING(PS3ImageBlitChannel, NV_IMAGE_BLIT_DMA_NOTIFY, 1);
+        OUT_RING  (PS3DmaNotifier);
+        BEGIN_RING(PS3ImageBlitChannel, NV_IMAGE_BLIT_COLOR_KEY, 1);
+        OUT_RING  (PS3NullObject);
+        BEGIN_RING(PS3ImageBlitChannel, NV_IMAGE_BLIT_SURFACE, 1);
+        OUT_RING  (PS3ContextSurfaces);
+        BEGIN_RING(PS3ImageBlitChannel, NV_IMAGE_BLIT_CLIP_RECTANGLE, 1);
+        OUT_RING  (PS3NullObject);
+        BEGIN_RING(PS3ImageBlitChannel, NV_IMAGE_BLIT_OPERATION, 1);
+        OUT_RING  (NV_IMAGE_BLIT_OPERATION_SRCCOPY);
+
+	BEGIN_RING(PS3ImageBlitChannel, 0x0120, 3);
+	OUT_RING  (0);
+	OUT_RING  (1);
+	OUT_RING  (2);
 }
 
 static void bind_TCL_instance(PS3Ptr pPS3)
@@ -565,6 +628,11 @@ static void setup_TCL(ScrnInfoPtr pScrn)
 
 	create_DmaNotifier_instance(pPS3);
 
+	create_Rop_instance(pPS3);
+	create_ImageBlit_instance(pPS3);
+	bind_ImageBlit_instance(pPS3);
+	init_ImageBlit_instance(pPS3);
+
 	create_TCL_instance(pPS3);
 	bind_TCL_instance(pPS3);
 	init_TCL_instance(pScrn);
@@ -665,6 +733,32 @@ static void PS3ExaWaitMarker(ScreenPtr pScreen, int marker)
 	PS3Sync(pPS3);
 }
 
+static inline Bool PS3AccelMemcpyRect(char *dst, const char *src, int height,
+                       int dst_pitch, int src_pitch, int line_len)
+{
+        if ((src_pitch == line_len) && (src_pitch == dst_pitch)) {
+                memcpy(dst, src, line_len*height);
+        } else {
+                while (height--) {
+                        memcpy(dst, src, line_len);
+                        src += src_pitch;
+                        dst += dst_pitch;
+                }
+        }
+
+        return TRUE;
+}
+
+static void *PS3ExaPixmapMap(PixmapPtr pPix)
+{
+        ScrnInfoPtr pScrn = xf86Screens[pPix->drawable.pScreen->myNum];
+        PS3Ptr pPS3 = PS3PTR(pScrn);
+        void *map;
+
+        map = (void *) pPS3->vram_base + exaGetPixmapOffset(pPix);
+        return map;
+}
+
 static Bool PS3ExaPrepareSolid(PixmapPtr pPixmap,
 			      int   alu,
 			      Pixel planemask,
@@ -684,7 +778,85 @@ static void PS3ExaDoneSolid (PixmapPtr pPixmap)
 	TRACE();
 }
 
-static CARD32 copy_src_size, copy_src_pitch, copy_src_offset;
+#define FALLBACK(msg) ErrorF("%s: FALLBACK: " msg, __FUNCTION__);
+
+static Bool PS3ExaPrepareCopy_2(PixmapPtr pSrcPixmap,
+				PixmapPtr pDstPixmap,
+				int       dx,
+				int       dy,
+				int       alu,
+				Pixel     planemask)
+{
+	ScrnInfoPtr pScrn = xf86Screens[pSrcPixmap->drawable.pScreen->myNum];
+        PS3Ptr pPS3 = PS3PTR(pScrn);
+        int fmt;
+	int w, h;
+
+	w = pSrcPixmap->drawable.width;
+	h = pSrcPixmap->drawable.height;
+
+//	ErrorF("%s %d %d %d %d %d\n", __FUNCTION__, dx, dy, w, h, alu);
+
+	if (pSrcPixmap->drawable.bitsPerPixel !=
+	    pDstPixmap->drawable.bitsPerPixel) {
+		FALLBACK("different bpp\n");
+		return FALSE;
+	}
+
+	planemask |= ~0 << pDstPixmap->drawable.bitsPerPixel;
+	if (planemask != ~0 || alu != GXcopy) {
+		FALLBACK("not copy or planemask\n");
+		return FALSE;
+	}
+
+	if (!PS3AccelGetCtxSurf2DFormatFromPixmap(pDstPixmap, &fmt))
+                return FALSE;
+        if (!PS3AccelSetCtxSurf2D(pSrcPixmap, pDstPixmap, fmt))
+                return FALSE;
+
+        return TRUE;
+}
+
+static void PS3ExaCopy_2(PixmapPtr pDstPixmap,
+			 int	srcX,
+			 int	srcY,
+			 int	dstX,
+			 int	dstY,
+			 int	width,
+			 int	height)
+{
+	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
+        PS3Ptr pPS3 = PS3PTR(pScrn);
+
+//	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
+//	       srcX, srcY, dstX, dstY, width, height);
+
+	BEGIN_RING(PS3ImageBlitChannel, NV_IMAGE_BLIT_POINT_IN, 3);
+	OUT_RING  ((srcY << 16) | srcX);
+	OUT_RING  ((dstY << 16) | dstX);
+	OUT_RING  ((height  << 16) | width);
+
+	FIRE_RING();
+}
+
+static void PS3ExaDoneCopy_2(PixmapPtr pDstPixmap)
+{
+	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
+        PS3Ptr pPS3 = PS3PTR(pScrn);
+
+	PS3NotifierReset(pPS3);
+	PS3DmaStart(pPS3, PS3ImageBlitChannel, 0x104, 1 );
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3ImageBlitChannel, 0x100, 1 );
+	PS3DmaNext(pPS3, 0);
+
+	FIRE_RING();
+
+	if (!PS3NotifierWaitStatus(pPS3, 0, 2000))
+		ErrorF("%s: failed\n", __FUNCTION__);
+}
+
+static CARD32 copy_src_size, copy_src_pitch, copy_src_offset, copy_dx, copy_dy;
 
 static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 			     PixmapPtr pDstPixmap,
@@ -699,18 +871,28 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 
 	int w, h;
 
-	w = (pSrcPixmap->drawable.width+3) & ~3;
-	h = pSrcPixmap->drawable.height;
+
+	copy_dx = dx;
+	copy_dy = dy;
+
+	if (dx < 0)
+		return FALSE;
+	if (dy < 0)
+		return FALSE;
 
 //	ErrorF("%s %d %d %d %d %d\n", __FUNCTION__, dx, dy, w, h, alu);
 
 	if (pSrcPixmap->drawable.bitsPerPixel !=
-			pDstPixmap->drawable.bitsPerPixel)
+	    pDstPixmap->drawable.bitsPerPixel) {
+		FALLBACK("different bpp\n");
 		return FALSE;
+	}
 
 	planemask |= ~0 << pDstPixmap->drawable.bitsPerPixel;
-	if (planemask != ~0 || alu != GXcopy)
+	if (planemask != ~0 || alu != GXcopy) {
+		FALLBACK("not copy or planemask\n");
 		return FALSE;
+	}
 
 	switch (pSrcPixmap->drawable.bitsPerPixel) {
 	case 32:
@@ -726,13 +908,20 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 		srcFormat = STRETCH_BLIT_FORMAT_DEPTH8;
 		break;
 	default:
+		FALLBACK("unsupported source format\n");
 		return FALSE;
 	}
 
-	if (!PS3AccelGetCtxSurf2DFormatFromPixmap(pDstPixmap, &dstFormat))
+	if (!PS3AccelGetCtxSurf2DFormatFromPixmap(pDstPixmap, &dstFormat)) {
+		FALLBACK("cannot get context surface format\n");
 		return FALSE;
-	if (!PS3AccelSetCtxSurf2D(pSrcPixmap, pDstPixmap, dstFormat))
+	}
+	if (!PS3AccelSetCtxSurf2D(pSrcPixmap, pDstPixmap, dstFormat)) {
+		FALLBACK("cannot set context surface format\n");
 		return FALSE;
+	}
+
+	ErrorF("%s %d %d %d %d %d\n", __FUNCTION__, dx, dy, w, h, alu);
 
 	/* screen to screen copy */
 	PS3DmaStart(pPS3, PS3ScaledImageChannel,
@@ -775,8 +964,8 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
-//	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
-//	       srcX, srcY, dstX, dstY, width, height);
+	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
+	       srcX, srcY, dstX, dstY, width, height);
 
 	PS3DmaStart(pPS3, PS3ScaledImageChannel, STRETCH_BLIT_CLIP_POINT, 6);
 	PS3DmaNext (pPS3, (dstY << 16) | dstX);
@@ -791,7 +980,7 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	PS3DmaNext (pPS3, copy_src_size);
 	PS3DmaNext (pPS3, copy_src_pitch);
 	PS3DmaNext (pPS3, copy_src_offset);
-	PS3DmaNext (pPS3, ((srcY*16 + 8) << 16) | (srcX*16 + 8));
+	PS3DmaNext (pPS3, ((srcY*16 + 8) << 16) | ((srcX*16 + 8) & 0xffff));
 	PS3DmaKickoff(pPS3); 
 
 // TEMP
@@ -811,7 +1000,7 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	if (PS3NotifierWaitStatus(pPS3, 0, 2000))
 		ErrorF("success\n");
 	else
-		ErrorF("success\n");
+		ErrorF("failed\n");
 // TEMP
 	ErrorF("1notifier = %08x,%08x,%08x,%08x\n",
 	       pPS3->dmaNotifier[0],
@@ -923,9 +1112,19 @@ static Bool PS3DownloadFromScreen(PixmapPtr pSrc,
 	cpp = pSrc->drawable.bitsPerPixel >> 3;
 	offset = (y * src_pitch) + (x * cpp);
 
+#if 0
+        src = PS3ExaPixmapMap(pSrc) + offset;
+        exaWaitSync(pSrc->drawable.pScreen);
+        if (PS3AccelMemcpyRect(dst, src, h, dst_pitch, src_pitch, w*cpp)) {
+		ErrorF("using memcpy for DFS\n");
+                return TRUE;
+	}
+#endif
+
 	PS3AccelDownloadM2MF(pScrn, dst,
 			     src_offset + offset,
 			     dst_pitch, src_pitch, w * cpp, h);
+
 	return TRUE;
 }
 
@@ -1025,6 +1224,16 @@ static Bool PS3UploadToScreen(PixmapPtr pDst,
 		}
 	}
 */
+
+#if 0
+        /* fallback to memcpy-based transfer */
+        dst = PS3ExaPixmapMap(pDst) + (y * dst_pitch) + (x * cpp);
+        exaWaitSync(pDst->drawable.pScreen);
+        if (PS3AccelMemcpyRect(dst, src, h, dst_pitch, src_pitch, w*cpp)) {
+		ErrorF("using memcpy for UTS\n");
+                return TRUE;
+	}
+#endif
 
 	/* DMA transfer */
 	dst_offset += (y * dst_pitch) + (x * cpp);
@@ -1217,9 +1426,13 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	pPS3->EXADriverPtr->DownloadFromScreen = PS3DownloadFromScreen; 
 	pPS3->EXADriverPtr->UploadToScreen = PS3UploadToScreen; 
 
-	pPS3->EXADriverPtr->PrepareCopy = PS3ExaPrepareCopy;
-	pPS3->EXADriverPtr->Copy = PS3ExaCopy;
-	pPS3->EXADriverPtr->DoneCopy = PS3ExaDoneCopy;
+//	pPS3->EXADriverPtr->PrepareCopy = PS3ExaPrepareCopy;
+//	pPS3->EXADriverPtr->Copy = PS3ExaCopy;
+//	pPS3->EXADriverPtr->DoneCopy = PS3ExaDoneCopy;
+
+	pPS3->EXADriverPtr->PrepareCopy = PS3ExaPrepareCopy_2;
+	pPS3->EXADriverPtr->Copy = PS3ExaCopy_2;
+	pPS3->EXADriverPtr->DoneCopy = PS3ExaDoneCopy_2;
 
 	pPS3->EXADriverPtr->PrepareSolid = PS3ExaPrepareSolid;
 	pPS3->EXADriverPtr->Solid = PS3ExaSolid;

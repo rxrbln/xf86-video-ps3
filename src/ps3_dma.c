@@ -29,7 +29,7 @@ void PS3DmaWait (ScrnInfoPtr pScrn, int size)
 	int t_start;
 	int dmaGet;
 
-	ErrorF("%s\n", __FUNCTION__);
+//	ErrorF("%s\n", __FUNCTION__);
 
 	size++;
 
