@@ -59,6 +59,8 @@
 //#define TRACE() ErrorF("%s\n", __FUNCTION__);
 #define TRACE()
 
+#define FALLBACK(msg) ErrorF("%s: FALLBACK: " msg, __FUNCTION__);
+
 #define RAMIN_BASE    0x0ff80000 /* RAMIN address in upper video RAM */
 #define RAMHT_OFFSET  0x10000    /* offset of hash table relative to RAMIN */
 
@@ -418,7 +420,18 @@ static CARD32 PS3ImageBlitObject[] = {
 };
 
 static CARD32 PS3RopObject[] = {
-	0x00000043, // 0x9f - Context Rop
+	0x00000043, // 0x43 - Context Rop
+	0x00000000,
+	0x01000000, // big endian
+	0x00000000,
+	0x00000000,
+	0x00000000,
+	0x00000000,
+	0x00000000,
+};
+
+static CARD32 PS3RectangleObject[] = {
+	NV04_GDI_RECTANGLE_TEXT,
 	0x00000000,
 	0x01000000, // big endian
 	0x00000000,
@@ -436,20 +449,28 @@ static void create_TCL_instance(PS3Ptr pPS3)
 	ramin_write_gfx_entry(pPS3, offset, PS3TCLObject);
 }
 
-static void create_Rop_instance(PS3Ptr pPS3)
+static void create_ImageBlit_instance(PS3Ptr pPS3)
 {
 	static unsigned long offset = 0x50220;
 
-	ramin_write_ramht_entry(pPS3, PS3Rop, offset, 1, 0);
-	ramin_write_gfx_entry(pPS3, offset, PS3RopObject);
+	ramin_write_ramht_entry(pPS3, PS3ImageBlit, offset, 1, 0);
+	ramin_write_gfx_entry(pPS3, offset, PS3ImageBlitObject);
 }
 
-static void create_ImageBlit_instance(PS3Ptr pPS3)
+static void create_Rectangle_instance(PS3Ptr pPS3)
 {
 	static unsigned long offset = 0x50240;
 
-	ramin_write_ramht_entry(pPS3, PS3ImageBlit, offset, 1, 0);
-	ramin_write_gfx_entry(pPS3, offset, PS3ImageBlitObject);
+	ramin_write_ramht_entry(pPS3, PS3Rectangle, offset, 1, 0);
+	ramin_write_gfx_entry(pPS3, offset, PS3RectangleObject);
+}
+
+static void create_Rop_instance(PS3Ptr pPS3)
+{
+	static unsigned long offset = 0x50260;
+
+	ramin_write_ramht_entry(pPS3, PS3Rop, offset, 1, 0);
+	ramin_write_gfx_entry(pPS3, offset, PS3RopObject);
 }
 
 static void create_DmaNotifier_instance(PS3Ptr pPS3)
@@ -465,10 +486,22 @@ static void create_DmaNotifier_instance(PS3Ptr pPS3)
 			      (unsigned long) pPS3->vram_base, 63);
 }
 
+static void bind_TCL_instance(PS3Ptr pPS3)
+{
+	PS3DmaStart(pPS3, PS3TCLChannel, 0, 1);
+	PS3DmaNext(pPS3, PS3TCL);
+}
+
 static void bind_ImageBlit_instance(PS3Ptr pPS3)
 {
 	PS3DmaStart(pPS3, PS3ImageBlitChannel, 0, 1);
 	PS3DmaNext(pPS3, PS3ImageBlit);
+}
+
+static void bind_Rectangle_instance(PS3Ptr pPS3)
+{
+	PS3DmaStart(pPS3, PS3RectangleChannel, 0, 1);
+	PS3DmaNext(pPS3, PS3Rectangle);
 }
 
 static void init_ImageBlit_instance(PS3Ptr pPS3)
@@ -490,10 +523,22 @@ static void init_ImageBlit_instance(PS3Ptr pPS3)
 	OUT_RING  (2);
 }
 
-static void bind_TCL_instance(PS3Ptr pPS3)
+static void init_Rectangle_instance(PS3Ptr pPS3)
 {
-	PS3DmaStart(pPS3, PS3TCLChannel, 0, 1);
-	PS3DmaNext(pPS3, PS3TCL);
+	BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_DMA_NOTIFY, 1);
+        OUT_RING  (PS3DmaNotifier);
+        BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_DMA_FONTS, 1);
+        OUT_RING  (PS3NullObject);
+        BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_SURFACE, 1);
+        OUT_RING  (PS3ContextSurfaces);
+        BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_ROP, 1);
+        OUT_RING  (PS3Rop);
+        BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_PATTERN, 1);
+        OUT_RING  (PS3NullObject);
+        BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_OPERATION, 1);
+        OUT_RING  (NV04_GDI_RECTANGLE_TEXT_OPERATION_ROP_AND);
+        BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_MONOCHROME_FORMAT, 1);
+        OUT_RING  (NV04_GDI_RECTANGLE_TEXT_MONOCHROME_FORMAT_LE);
 }
 
 #define SF(bf) (NV40TCL_BLEND_FUNC_SRC_RGB_##bf |                              \
@@ -629,9 +674,14 @@ static void setup_TCL(ScrnInfoPtr pScrn)
 	create_DmaNotifier_instance(pPS3);
 
 	create_Rop_instance(pPS3);
+
 	create_ImageBlit_instance(pPS3);
 	bind_ImageBlit_instance(pPS3);
 	init_ImageBlit_instance(pPS3);
+
+	create_Rectangle_instance(pPS3);
+	bind_Rectangle_instance(pPS3);
+	init_Rectangle_instance(pPS3);
 
 	create_TCL_instance(pPS3);
 	bind_TCL_instance(pPS3);
@@ -725,6 +775,22 @@ PS3AccelSetCtxSurf2D(PixmapPtr psPix, PixmapPtr pdPix, int format)
 	return TRUE;
 }
 
+static CARD32 rectFormat(DrawablePtr pDrawable)
+{
+        switch(pDrawable->bitsPerPixel) {
+        case 32:
+        case 24:
+                return NV04_GDI_RECTANGLE_TEXT_COLOR_FORMAT_A8R8G8B8;
+                break;
+        case 16:
+                return NV04_GDI_RECTANGLE_TEXT_COLOR_FORMAT_A16R5G6B5;
+                break;
+        default:
+                return NV04_GDI_RECTANGLE_TEXT_COLOR_FORMAT_A8R8G8B8;
+                break;
+        }
+}
+
 static void PS3ExaWaitMarker(ScreenPtr pScreen, int marker)
 {
 	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
@@ -764,21 +830,80 @@ static Bool PS3ExaPrepareSolid(PixmapPtr pPixmap,
 			      Pixel planemask,
 			      Pixel fg)
 {
+        ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+        PS3Ptr pPS3 = PS3PTR(pScrn);
+        int fmt;
+
 	TRACE();
-	return FALSE;
+
+        planemask |= ~0 << pPixmap->drawable.bitsPerPixel;
+        if (planemask != ~0 || alu != GXcopy) {
+		FALLBACK("alu not supported yet (%02x)\n");
+		return FALSE;
+	} else{
+                BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_OPERATION, 1);
+                OUT_RING  (3); /* SRCCOPY */
+        }
+
+        if (!PS3AccelGetCtxSurf2DFormatFromPixmap(pPixmap, &fmt))
+                return FALSE;
+
+        /* When SURFACE_FORMAT_A8R8G8B8 is used with GDI_RECTANGLE_TEXT, the 
+         * alpha channel gets forced to 0xFF for some reason.  We're using 
+         * SURFACE_FORMAT_Y32 as a workaround
+         */
+        if (fmt == NV04_CONTEXT_SURFACES_2D_FORMAT_A8R8G8B8)
+                fmt = NV04_CONTEXT_SURFACES_2D_FORMAT_Y32;
+
+        if (!PS3AccelSetCtxSurf2D(pPixmap, pPixmap, fmt))
+                return FALSE;
+
+        BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_COLOR_FORMAT, 1);
+        OUT_RING  (rectFormat(&pPixmap->drawable));
+        BEGIN_RING(PS3RectangleChannel, NV04_GDI_RECTANGLE_TEXT_COLOR1_A, 1);
+        OUT_RING  (fg);
+
+	return TRUE;
 }
 
 static void PS3ExaSolid (PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 {
+        ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+        PS3Ptr pPS3 = PS3PTR(pScrn);
+        int width = x2 - x1;
+        int height = y2 - y1;
+
 	TRACE();
+
+//	ErrorF("Solid %d,%d-%d,%d\n", x1, y1, x2, y2);
+
+        BEGIN_RING(PS3RectangleChannel,
+                   NV04_GDI_RECTANGLE_TEXT_UNCLIPPED_RECTANGLE_POINT(0), 2);
+        OUT_RING  ((x1 << 16) | y1);
+        OUT_RING  ((width << 16) | height);
+
+	FIRE_RING();
 }
 
 static void PS3ExaDoneSolid (PixmapPtr pPixmap)
 {
-	TRACE();
-}
+	ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+        PS3Ptr pPS3 = PS3PTR(pScrn);
 
-#define FALLBACK(msg) ErrorF("%s: FALLBACK: " msg, __FUNCTION__);
+	TRACE();
+#if 1
+	PS3NotifierReset(pPS3);
+	PS3DmaStart(pPS3, PS3RectangleChannel, 0x104, 1 );
+	PS3DmaNext(pPS3, 0);
+	PS3DmaStart(pPS3, PS3RectangleChannel, 0x100, 1 );
+	PS3DmaNext(pPS3, 0);
+
+	FIRE_RING();
+
+	if (!PS3NotifierWaitStatus(pPS3, 0, 2000))
+		ErrorF("%s: failed\n", __FUNCTION__);
+#endif
+}
 
 static Bool PS3ExaPrepareCopy_2(PixmapPtr pSrcPixmap,
 				PixmapPtr pDstPixmap,
