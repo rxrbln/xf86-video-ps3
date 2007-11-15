@@ -59,7 +59,8 @@
 //#define TRACE() ErrorF("%s\n", __FUNCTION__);
 #define TRACE()
 
-#define FALLBACK(msg) ErrorF("%s: FALLBACK: " msg, __FUNCTION__);
+//#define FALLBACK(msg) ErrorF("%s: FALLBACK: " msg, __FUNCTION__);
+#define FALLBACK(msg) 
 
 #define RAMIN_BASE    0x0ff80000 /* RAMIN address in upper video RAM */
 #define RAMHT_OFFSET  0x10000    /* offset of hash table relative to RAMIN */
@@ -669,8 +670,15 @@ static void setup_TCL(ScrnInfoPtr pScrn)
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
 	create_DmaNotifier_instance(pPS3);
-
 	create_Rop_instance(pPS3);
+
+	BEGIN_RING(PS3MemFormatDownloadChannel,
+		   NV_MEMORY_TO_MEMORY_FORMAT_DMA_NOTIFY, 1);
+	OUT_RING  (PS3DmaNotifier);
+
+	BEGIN_RING(PS3MemFormatUploadChannel,
+		   NV_MEMORY_TO_MEMORY_FORMAT_DMA_NOTIFY, 1);
+	OUT_RING  (PS3DmaNotifier);
 
 	create_ImageBlit_instance(pPS3);
 	bind_ImageBlit_instance(pPS3);
@@ -1195,8 +1203,8 @@ PS3AccelDownloadM2MF(ScrnInfoPtr pScrn, char *dst, CARD32 src_offset,
                 BEGIN_RING(PS3MemFormatDownloadChannel, 0x100, 1);
                 OUT_RING  (0);
                 FIRE_RING();
-//                if (!PS3NotifierWaitStatus(pPS3, 0, 2000))
-//                        return FALSE;
+                if (!PS3NotifierWaitStatus(pPS3, 0, 2000))
+                        return FALSE;
 
 		if (dst_pitch == line_len) {
 			memcpy(dst, src, dst_pitch * lc);
@@ -1235,6 +1243,7 @@ static Bool PS3DownloadFromScreen(PixmapPtr pSrc,
 	offset = (y * src_pitch) + (x * cpp);
 
 #if 0
+	/* fallback to memcpy transfer */
         src = PS3ExaPixmapMap(pSrc) + offset;
         exaWaitSync(pSrc->drawable.pScreen);
         if (PS3AccelMemcpyRect(dst, src, h, dst_pitch, src_pitch, w*cpp)) {
@@ -1299,14 +1308,14 @@ PS3AccelUploadM2MF(ScrnInfoPtr pScrn, CARD32 dst_offset, const char *src,
 		PS3DmaNext (pPS3, 0);
 
 		PS3NotifierReset(pPS3);
-                BEGIN_RING(PS3MemFormatDownloadChannel,
+                BEGIN_RING(PS3MemFormatUploadChannel,
 			   NV_MEMORY_TO_MEMORY_FORMAT_NOTIFY, 1);
                 OUT_RING  (0);
-                BEGIN_RING(PS3MemFormatDownloadChannel, 0x100, 1);
+                BEGIN_RING(PS3MemFormatUploadChannel, 0x100, 1);
                 OUT_RING  (0);
                 FIRE_RING();
-//                if (!PS3NotifierWaitStatus(pPS3, 0, 2000))
-//                        return FALSE;
+                if (!PS3NotifierWaitStatus(pPS3, 0, 2000))
+                        return FALSE;
 
 		dst_offset += lc * dst_pitch;
 		line_count -= lc;
@@ -1534,9 +1543,9 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 
 	pPS3->EXADriverPtr->memoryBase		= (void *) pPS3->vram_base;
 	pPS3->EXADriverPtr->offScreenBase	=
-		(2 * pPS3->fboff +
-		 pScrn->displayWidth * pScrn->virtualY *
-		 (pScrn->bitsPerPixel/8) + 63) & ~63;
+		((2 * pPS3->fboff +
+		  pScrn->displayWidth * pScrn->virtualY *
+		  (pScrn->bitsPerPixel/8) + 63) & ~63);
 	pPS3->EXADriverPtr->memorySize		= pPS3->vram_size;
 	pPS3->EXADriverPtr->pixmapOffsetAlign	= 256; 
 	pPS3->EXADriverPtr->pixmapPitchAlign	= 64; 
@@ -1550,10 +1559,6 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	pPS3->EXADriverPtr->DownloadFromScreen = PS3DownloadFromScreen; 
 	pPS3->EXADriverPtr->UploadToScreen = PS3UploadToScreen; 
 
-//	pPS3->EXADriverPtr->PrepareCopy = PS3ExaPrepareCopy;
-//	pPS3->EXADriverPtr->Copy = PS3ExaCopy;
-//	pPS3->EXADriverPtr->DoneCopy = PS3ExaDoneCopy;
-
 	pPS3->EXADriverPtr->PrepareCopy = PS3ExaPrepareCopy_2;
 	pPS3->EXADriverPtr->Copy = PS3ExaCopy_2;
 	pPS3->EXADriverPtr->DoneCopy = PS3ExaDoneCopy_2;
@@ -1561,11 +1566,6 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	pPS3->EXADriverPtr->PrepareSolid = PS3ExaPrepareSolid;
 	pPS3->EXADriverPtr->Solid = PS3ExaSolid;
 	pPS3->EXADriverPtr->DoneSolid = PS3ExaDoneSolid;
-
-//	pPS3->EXADriverPtr->CheckComposite   = PS3CheckComposite;
-//	pPS3->EXADriverPtr->PrepareComposite = PS3PrepareComposite;
-//	pPS3->EXADriverPtr->Composite        = PS3Composite;
-//	pPS3->EXADriverPtr->DoneComposite    = PS3DoneComposite;
 
 	pPS3->EXADriverPtr->CheckComposite   = NV40EXACheckComposite;
 	pPS3->EXADriverPtr->PrepareComposite = NV40EXAPrepareComposite;
@@ -1581,6 +1581,9 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 
 	/* Initialize 3D context */
 	setup_TCL(pScrn);
+
+	/* Prepare A8 shaders */
+	NV40EXAHackupA8Shaders();
 
 	return exaDriverInit(pScreen, pPS3->EXADriverPtr);
 }

@@ -196,7 +196,7 @@ NV40_GetPictOpRec(int op)
 	return &NV40PictOp[op];
 }
 
-#if 1
+#if 0
 #define FALLBACK(fmt,args...) do {					\
 	ErrorF("FALLBACK %s:%d> " fmt, __func__, __LINE__, ##args);	\
 	return FALSE;							\
@@ -411,6 +411,11 @@ NV40EXAPrepareComposite(int op, PicturePtr psPict,
 
 	TRACE();
 
+
+	if (pdPict->format == PICT_a8) {
+		FALLBACK("do not support a8 dest format\n");
+	}
+
 	blend = NV40_GetPictOpRec(op);
 
 	NV40_SetupBlend(pScrn, blend, pdPict->format,
@@ -421,9 +426,9 @@ NV40EXAPrepareComposite(int op, PicturePtr psPict,
 	NV40EXATexture(pScrn, psPix, psPict, 0);
 
 	NV40_LoadVtxProg(pPS3, &nv40_vp_exa_render);
+
 	if (pmPict) {
 		NV40EXATexture(pScrn, pmPix, pmPict, 1);
-
 		if (pmPict->componentAlpha && PICT_FORMAT_RGB(pmPict->format)) {
 			if (blend->src_alpha)
 				fpid = NV40EXA_FPID_COMPOSITE_MASK_SA_CA;
@@ -432,11 +437,9 @@ NV40EXAPrepareComposite(int op, PicturePtr psPict,
 		} else {
 			fpid = NV40EXA_FPID_COMPOSITE_MASK;
 		}
-
 		state->have_mask = TRUE;
 	} else {
 		fpid = NV40EXA_FPID_PASS_TEX0;
-
 		state->have_mask = FALSE;
 	}
 
