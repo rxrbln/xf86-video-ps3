@@ -243,7 +243,6 @@ PS3Probe(DriverPtr drv, int flags)
 	char *dev;
 	Bool foundScreen = FALSE;
 
-
 	TRACE("probe start");
 
 	/* For now, just bail out for PROBE_DETECT. */
@@ -403,8 +402,10 @@ PS3PreInit(ScrnInfoPtr pScrn, int flags)
 		xf86PruneDriverModes(pScrn);
 	}
 
-	if (NULL == pScrn->modes)
+	if (NULL == pScrn->modes) {
+		xf86DrvMsg(pScrn->scrnIndex, X_INFO, "use current mode\n");
 		fbdevHWUseBuildinMode(pScrn);
+	}
 	pScrn->currentMode = pScrn->modes;
 
 	/* First approximation, may be refined in ScreenInit */
@@ -489,10 +490,7 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 
 	pPS3->fboff = fbdevHWLinearOffset(pScrn);
 
-	PS3GpuInit(pPS3);
-
 	fbdevHWSave(pScrn);
-
 	if (!fbdevHWModeInit(pScrn, pScrn->currentMode)) {
 		xf86DrvMsg(scrnIndex,X_ERROR,"mode initialization failed\n");
 		return FALSE;
@@ -513,19 +511,9 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	  return FALSE;
 	}
 
-	/* FIXME: this doesn't work for all cases, e.g. when each scanline
-	   has a padding which is independent from the depth (controlfb) */
-	pScrn->displayWidth = fbdevHWGetLineLength(pScrn) /
-		(pScrn->bitsPerPixel / 8);
 
-	if (pScrn->displayWidth != pScrn->virtualX) {
-		xf86DrvMsg(scrnIndex, X_INFO,
-			   "Pitch updated to %d after ModeInit\n",
-			   pScrn->displayWidth);
-	}
-
-	pPS3->fbstart = pPS3->fbmem + pPS3->fboff;
-	pPS3->lineLength = fbdevHWGetLineLength(pScrn);
+	PS3GpuInit(pPS3);
+	pScrn->displayWidth = pPS3->lineLength / (pScrn->bitsPerPixel / 8);
 
 	if (pScrn->bitsPerPixel == 32) {
 		ret = fbScreenInit(pScreen, pPS3->fbstart, pScrn->virtualX,

@@ -328,9 +328,6 @@ int NV40_LoadFragProg(PS3Ptr pPS3, nv_shader_t *shader)
 	CARD32 *fpmem = (CARD32 *) pPS3->fpMem;
 	static int next_hw_id_offset = 0;
 
-// TEMP
-//	ErrorF("fb = %p fpmem = %p next = %d\n", fb, fpmem, next_hw_id_offset);
-
 	if (!shader->hw_id)
 	{
 		for (i = 0; i < shader->size; i++) {
@@ -685,12 +682,12 @@ static void setup_TCL(ScrnInfoPtr pScrn)
 
 	create_TCL_instance(pPS3);
 	bind_TCL_instance(pPS3);
+
 	init_TCL_instance(pScrn);
 
 	NV40_LoadTex(pPS3);
 	NV40_LoadVtxProg(pPS3, &nv40_vp);
 	NV40_LoadFragProg(pPS3, &nv30_fp);
-
 	PS3DmaKickoff(pPS3);
 	PS3Sync(pPS3);
 }
@@ -1046,7 +1043,7 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 		return FALSE;
 	}
 
-	ErrorF("%s %d %d %d %d %d\n", __FUNCTION__, dx, dy, w, h, alu);
+//	ErrorF("%s %d %d %d %d %d\n", __FUNCTION__, dx, dy, w, h, alu);
 
 	/* screen to screen copy */
 	PS3DmaStart(pPS3, PS3ScaledImageChannel,
@@ -1089,8 +1086,8 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
-	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
-	       srcX, srcY, dstX, dstY, width, height);
+//	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
+//	       srcX, srcY, dstX, dstY, width, height);
 
 	PS3DmaStart(pPS3, PS3ScaledImageChannel, STRETCH_BLIT_CLIP_POINT, 6);
 	PS3DmaNext (pPS3, (dstY << 16) | dstX);
@@ -1537,13 +1534,15 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 
 	pPS3->EXADriverPtr->memoryBase		= (void *) pPS3->vram_base;
 	pPS3->EXADriverPtr->offScreenBase	=
-		pScrn->virtualX * pScrn->virtualY *(pScrn->bitsPerPixel/8); 
+		(2 * pPS3->fboff +
+		 pScrn->displayWidth * pScrn->virtualY *
+		 (pScrn->bitsPerPixel/8) + 63) & ~63;
 	pPS3->EXADriverPtr->memorySize		= pPS3->vram_size;
 	pPS3->EXADriverPtr->pixmapOffsetAlign	= 256; 
 	pPS3->EXADriverPtr->pixmapPitchAlign	= 64; 
 	pPS3->EXADriverPtr->flags		= EXA_OFFSCREEN_PIXMAPS;
-	pPS3->EXADriverPtr->maxX			= 32768;
-	pPS3->EXADriverPtr->maxY			= 32768;
+	pPS3->EXADriverPtr->maxX		= 32768;
+	pPS3->EXADriverPtr->maxY		= 32768;
 
 	pPS3->EXADriverPtr->WaitMarker = PS3ExaWaitMarker;
 
@@ -1574,8 +1573,8 @@ Bool PS3ExaInit(ScreenPtr pScreen)
 	pPS3->EXADriverPtr->DoneComposite    = NV40EXADoneComposite;
 
 	/* Reserve FB memory for DMA notifier and fragment programs */
-	pPS3->dmaNotifier = (CARD32 *) (((unsigned long ) pPS3->vram_base +
-			   pPS3->EXADriverPtr->offScreenBase + 63) & ~63);
+	pPS3->dmaNotifier = (CARD32 *) ((unsigned long ) pPS3->vram_base +
+					pPS3->EXADriverPtr->offScreenBase);
 	pPS3->fpMem = (CARD32 *) ((unsigned long) pPS3->dmaNotifier + 64);
 	pPS3->EXADriverPtr->offScreenBase	+= 0x1000;
 	pPS3->EXADriverPtr->memorySize		-= 0x1000;

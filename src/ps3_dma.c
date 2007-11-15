@@ -153,14 +153,8 @@ Bool PS3InitDma(ScrnInfoPtr pScrn)
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int i, ret;
 
-// TEMP
-	ErrorF("NoAccel = %d pPS3=%p pScreen=%p\n", 
-	       pPS3->NoAccel, pPS3, pScrn);
-
 	if (pPS3->NoAccel)
 		return TRUE;
-
-	ErrorF("%s:%d\n", __FUNCTION__, __LINE__);
 
 	pPS3->dmaBase = (CARD32 *) pPS3->fifo_base;
 	pPS3->FIFO = (volatile CARD32 *) pPS3->ctrl_base;
@@ -184,8 +178,6 @@ Bool PS3InitDma(ScrnInfoPtr pScrn)
 		PS3DmaNext(pPS3, 0);
 	}
 	pPS3->dmaFree -= SKIPS;
-
-	ErrorF("%s:%d\n", __FUNCTION__, __LINE__);
 
 	return TRUE;
 }

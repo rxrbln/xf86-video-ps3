@@ -39,6 +39,44 @@
 /* -------------------------------------------------------------------- */
 /* our private data, and two functions to allocate/free this            */
 
+/* supported modes */
+#define MODE_MASK          (0x1f)
+#define MODE_RGB         (1 << 5)
+#define MODE_FULLSCREEN  (1 << 7)
+#define MODE_DITHERED   (1 << 11)
+
+#define MODE_COUNT 14
+
+struct fb_mode_info {
+	CARD32 width;
+	CARD32 height;
+
+	CARD32 virtual_x;
+	CARD32 virtual_y;
+};
+
+/*
+  YUV 60Hz  1:480i  2:480p  3:720p  4:1080i  5:1080p
+  YUV 50Hz  6:576i  7:576p  8:720p  9:1080i 10:1080p
+  VESA     11:WXGA 12:SXGA 13:WUXGA
+*/
+static const struct fb_mode_info fb_modes[MODE_COUNT] = {
+	{    0,    0,    0,    0 },
+	{  576,  384,  720,  480 },
+	{  576,  384,  720,  480 },
+	{ 1124,  644, 1280,  720 },
+	{ 1688,  964, 1920, 1080 },
+	{ 1688,  964, 1920, 1080 },
+	{  576,  460,  720,  576 },
+	{  576,  460,  720,  576 },
+	{ 1124,  644, 1280,  720 },
+	{ 1688,  964, 1920, 1080 },
+	{ 1688,  964, 1920, 1080 },
+	{ 1280,  768, 1280,  768 },
+	{ 1280, 1024, 1280, 1024 },
+	{ 1920, 1200, 1920, 1200 },
+};
+
 static int gpu_get_info(PS3Ptr pPS3)
 {
 	struct ps3fb_ioctl_gpu_info info;
@@ -55,10 +93,6 @@ static int gpu_get_info(PS3Ptr pPS3)
 		goto out;
 	}
 	
-// TEMP
-	ErrorF("vram %d fifo %d ctrl %d\n",
-	       info.vram_size, info.fifo_size, info.ctrl_size);
-
 	pPS3->vram_size = info.vram_size;
 	pPS3->fifo_size = info.fifo_size;
 	pPS3->ctrl_size = info.ctrl_size;
@@ -83,9 +117,6 @@ static void *map_resource(char const *name, int len)
 		return NULL;
 	}
 
-// TEMP
-	printf("mmap: %s len %d\n", name, len);
-
 	virt = mmap(0, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
 
 	if (virt == MAP_FAILED)
@@ -103,21 +134,42 @@ static void unmap_resource(void *base, int len)
 
 static int enter_direct_mode(PS3Ptr pPS3)
 {
+	struct fb_mode_info const *m;
         struct fb_fix_screeninfo fix;
+        struct fb_var_screeninfo var;
 	int ret = 0;
 	int fd;
 	int val = 0;
+	int mode = 0;
 
 	if ((fd = open("/dev/fb0", O_RDWR)) < 0) {
 		ErrorF("open: %s", strerror(errno));
 		return -1;
 	}
 
+        /* get video mode */
+	if ((ret = ioctl(fd, PS3FB_IOCTL_GETMODE, &mode)) < 0) {
+		perror("ioctl");
+		goto out;
+	}
+
+	if ((mode & MODE_MASK) >= MODE_COUNT) {
+		ErrorF("unsupported mode %d\n", mode);
+		goto out;
+	}
+	m = &fb_modes[mode & MODE_MASK];
+
         /* get framebuffer size */
         if ((ret = ioctl(fd, FBIOGET_FSCREENINFO, &fix)) < 0) {
                 perror("ioctl");
                 goto out;
         }
+
+	/* get display size */
+	if ((ret == ioctl(fd, FBIOGET_VSCREENINFO, &var)) < 0) {
+		perror("ioctl");
+		goto out;
+	}
 
 	/* stop that incessant blitting! */
 	if ((ret = ioctl(fd, PS3FB_IOCTL_ON, 0)) < 0) {
@@ -137,11 +189,23 @@ static int enter_direct_mode(PS3Ptr pPS3)
 		goto out;
 	}
 
+	pPS3->fboff = ((m->virtual_y - var.yres_virtual) / 2 * m->virtual_x +
+		       (m->virtual_x - var.xres_virtual) / 2) * 4;
+	pPS3->fboff = (pPS3->fboff + 63) & ~63;
+
+//	ErrorF("%dx%d mode %d off %d\n", var.xres_virtual, var.yres_virtual,
+//	       mode, pPS3->fboff);
+
 	pPS3->iof_base = (CARD32) pPS3->fbmem;
 	pPS3->iof_size = fix.smem_len;
 	pPS3->iof_offset = 0x0d000000; /* GPUIOF */
-	
+
 	pPS3->fbmem = (unsigned char *) pPS3->vram_base;
+	pPS3->fbstart = pPS3->fbmem + pPS3->fboff;
+	pPS3->lineLength = m->virtual_x * 4;
+
+	memset(pPS3->fbmem, 0, m->virtual_y * pPS3->lineLength);
+	
 	/* reserve mem for xv */
 	pPS3->xv_size = 1920 * 1080 * 2;
 	pPS3->xv_base = pPS3->iof_base + pPS3->iof_size - pPS3->xv_size;
