@@ -501,7 +501,7 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 		return FALSE;
 	}
 	fbdevHWSaveScreen(pScreen, SCREEN_SAVER_ON);
-	fbdevHWAdjustFrame(scrnIndex,0,0,0);
+	fbdevHWAdjustFrame(scrnIndex,0,0);
 
 	/* mi layer */
 	miClearVisualTypes();
