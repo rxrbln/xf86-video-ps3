@@ -59,6 +59,7 @@
 
 #include <sys/time.h>
 #include <string.h>
+#include <unistd.h>
 
 //#define TRACE() ErrorF("%s\n", __FUNCTION__);
 #define TRACE()
