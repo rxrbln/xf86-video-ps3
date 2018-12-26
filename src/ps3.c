@@ -24,9 +24,6 @@
 
 /* for visuals */
 #include "fb.h"
-#ifdef USE_AFB
-#include "afb.h"
-#endif
 
 #if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) < 6
 #include "xf86Resources.h"
