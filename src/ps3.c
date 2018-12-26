@@ -16,7 +16,6 @@
 #include "xf86_OSproc.h"
 
 #include "mipointer.h"
-#include "mibstore.h"
 #include "micmap.h"
 #include "colormapst.h"
 #include "xf86cmap.h"
@@ -572,7 +571,6 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 		PS3ExaInit(pScreen);
 	}
 
-	miInitializeBackingStore(pScreen);
 	xf86SetBackingStore(pScreen);
 
 	/* software cursor */
