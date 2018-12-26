@@ -1,3 +1,8 @@
+
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "xf86.h"
 #include "exa.h"
 #include "xf86xv.h"

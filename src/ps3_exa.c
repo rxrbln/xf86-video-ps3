@@ -42,6 +42,10 @@
   PS3 Modifications (c) Vivien Chappelier (vivien.chappelier@free.fr)
  */
 
+#ifdef HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 //#include "nv_include.h"
 #include "xf86.h"
 #include "exa.h"
