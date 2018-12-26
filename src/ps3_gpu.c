@@ -209,7 +209,7 @@ err_unmap_fifo:
 err_unmap_vram:
 	unmap_resource((void *) pPS3->ctrl_base, pPS3->ctrl_size);
 err_free:
-	xfree(pPS3);
+	free(pPS3);
 
 	return -1;
 }
@@ -222,5 +222,5 @@ void PS3GpuCleanup(PS3Ptr pPS3)
 	unmap_resource((void *) pPS3->fifo_base, pPS3->fifo_size);
 	unmap_resource((void *) pPS3->vram_base, pPS3->vram_size);
 
-	xfree(pPS3);
+	free(pPS3);
 }

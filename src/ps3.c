@@ -214,7 +214,7 @@ PS3FreeRec(ScrnInfoPtr pScrn)
 {
 	if (pScrn->driverPrivate == NULL)
 		return;
-	xfree(pScrn->driverPrivate);
+	free(pScrn->driverPrivate);
 	pScrn->driverPrivate = NULL;
 }
 
@@ -295,7 +295,7 @@ PS3Probe(DriverPtr drv, int flags)
 		    }
 	    }
 	}
-	xfree(devSections);
+	free(devSections);
 	TRACE("probe done");
 	return foundScreen;
 }
@@ -376,7 +376,7 @@ PS3PreInit(ScrnInfoPtr pScrn, int flags)
 
 	/* handle options */
 	xf86CollectOptions(pScrn, NULL);
-	if (!(pPS3->Options = xalloc(sizeof(PS3Options))))
+	if (!(pPS3->Options = malloc(sizeof(PS3Options))))
 		return FALSE;
 	memcpy(pPS3->Options, PS3Options, sizeof(PS3Options));
 	xf86ProcessOptions(pScrn->scrnIndex, pPS3->pEnt->device->options, pPS3->Options);

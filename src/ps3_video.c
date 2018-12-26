@@ -1104,7 +1104,7 @@ PS3SetupBlitVideo (ScreenPtr pScreen)
 	PS3PortPrivPtr       pPriv;
 	int i;
 
-	if (!(adapt = xcalloc(1, sizeof(XF86VideoAdaptorRec) +
+	if (!(adapt = calloc(1, sizeof(XF86VideoAdaptorRec) +
 			      sizeof(PS3PortPrivRec) +
 			      (sizeof(DevUnion) * NUM_BLIT_PORTS)))) {
 		return NULL;
@@ -1199,7 +1199,7 @@ void PS3InitVideo (ScreenPtr pScreen)
 
 		if(blitAdaptor)    size++;
 
-		newAdaptors = xalloc(size * sizeof(XF86VideoAdaptorPtr *));
+		newAdaptors = malloc(size * sizeof(XF86VideoAdaptorPtr *));
 		if(newAdaptors) {
 			if(num_adaptors) {
 				memcpy(newAdaptors, adaptors, num_adaptors *
@@ -1219,6 +1219,6 @@ void PS3InitVideo (ScreenPtr pScreen)
 	if (num_adaptors)
 		xf86XVScreenInit(pScreen, adaptors, num_adaptors);
 	if (newAdaptors)
-		xfree(newAdaptors);
+		free(newAdaptors);
 }
 
