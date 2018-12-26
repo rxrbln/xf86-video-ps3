@@ -372,7 +372,7 @@ PS3PreInit(ScrnInfoPtr pScrn, int flags)
 	if (!pPS3->NoAccel) {
 		if (!xf86LoadSubModule(pScrn, "exa")) {
 			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
-				   "EXA module note found\n");
+				   "EXA module not found\n");
 			PS3FreeRec(pScrn);
 			return FALSE;
 		}
