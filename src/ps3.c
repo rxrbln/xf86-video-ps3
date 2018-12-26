@@ -28,8 +28,10 @@
 #include "afb.h"
 #endif
 
+#if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) < 6
 #include "xf86Resources.h"
 #include "xf86RAC.h"
+#endif
 
 #include "fbdevhw.h"
 
@@ -322,9 +324,11 @@ PS3PreInit(ScrnInfoPtr pScrn, int flags)
 
 	pPS3->pEnt = xf86GetEntityInfo(pScrn->entityList[0]);
 
+#if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) < 6
 	pScrn->racMemFlags = RAC_FB | RAC_COLORMAP | RAC_CURSOR | RAC_VIEWPORT;
 	/* XXX Is this right?  Can probably remove RAC_FB */
 	pScrn->racIoFlags = RAC_FB | RAC_COLORMAP | RAC_CURSOR | RAC_VIEWPORT;
+#endif
 
 	/* open device */
 	if (!fbdevHWInit(pScrn,NULL,xf86FindOptionValue(pPS3->pEnt->device->options,"fbdev")))
