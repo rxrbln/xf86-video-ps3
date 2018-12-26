@@ -34,6 +34,12 @@ AM_INIT_AUTOMAKE([dist-bzip2])
 
 AM_MAINTAINER_MODE
 
+# Require X.Org server macros (i.e. XORG_DRIVER_CHECK_EXT) to check for required modules
+m4_ifndef([XORG_DRIVER_CHECK_EXT],
+          [m4_fatal([must install xorg-server macros before running autoconf/autogen.
+	Hint: either install from source, git://anongit.freedesktop.org/xorg/xserver or,
+	depending on your distribution, try package 'xserver-xorg-dev' or 'xorg-x11-server-devel'])])
+
 # Checks for programs.
 AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
