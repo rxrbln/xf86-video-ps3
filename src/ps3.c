@@ -108,56 +108,6 @@ static const OptionInfoRec PS3Options[] = {
 
 /* -------------------------------------------------------------------- */
 
-static const char *fbSymbols[] = {
-	"fbScreenInit",
-	"fbPictureInit",
-	NULL
-};
-
-static const char *exaSymbols[] = {
-    "exaDriverInit",
-    "exaOffscreenInit",
-    NULL
-};
-
-static const char *fbdevHWSymbols[] = {
-	"fbdevHWInit",
-	"fbdevHWProbe",
-	"fbdevHWSetVideoModes",
-	"fbdevHWUseBuildinMode",
-
-	"fbdevHWGetDepth",
-	"fbdevHWGetLineLength",
-	"fbdevHWGetName",
-	"fbdevHWGetType",
-	"fbdevHWGetVidmem",
-	"fbdevHWLinearOffset",
-	"fbdevHWLoadPalette",
-	"fbdevHWMapVidmem",
-	"fbdevHWUnmapVidmem",
-
-	/* colormap */
-	"fbdevHWLoadPalette",
-	"fbdevHWLoadPaletteWeak",
-
-	/* ScrnInfo hooks */
-	"fbdevHWAdjustFrameWeak",
-	"fbdevHWEnterVTWeak",
-	"fbdevHWLeaveVTWeak",
-	"fbdevHWModeInit",
-	"fbdevHWRestore",
-	"fbdevHWSave",
-	"fbdevHWSaveScreen",
-	"fbdevHWSaveScreenWeak",
-	"fbdevHWSwitchModeWeak",
-	"fbdevHWValidModeWeak",
-
-	"fbdevHWDPMSSet",
-	"fbdevHWDPMSSetWeak",
-
-	NULL
-};
-
 #ifdef XFree86LOADER
 
 MODULESETUPPROTO(ps3Setup);
@@ -186,7 +136,6 @@ ps3Setup(pointer module, pointer opts, int *errmaj, int *errmin)
 	if (!setupDone) {
 		setupDone = TRUE;
 		xf86AddDriver(&PS3, module, HaveDriverFuncs);
-		LoaderRefSymLists(fbSymbols, exaSymbols, fbdevHWSymbols, NULL);
 		return (pointer)1;
 	} else {
 		if (errmaj) *errmaj = LDR_ONCEONLY;
@@ -256,8 +205,6 @@ PS3Probe(DriverPtr drv, int flags)
 
 	if (!xf86LoadDrvSubModule(drv, "fbdevhw"))
 	    return FALSE;
-	    
-	xf86LoaderReqSymLists(fbdevHWSymbols, NULL);
 
 	for (i = 0; i < numDevSections; i++) {
 
@@ -424,8 +371,6 @@ PS3PreInit(ScrnInfoPtr pScrn, int flags)
 		return FALSE;
 	}
 
-	xf86LoaderReqSymLists(fbSymbols, NULL);
-
 	/* Load EXA */
 	if (!pPS3->NoAccel) {
 		if (!xf86LoadSubModule(pScrn, "exa")) {
@@ -434,7 +379,6 @@ PS3PreInit(ScrnInfoPtr pScrn, int flags)
 			PS3FreeRec(pScrn);
 			return FALSE;
 		}
-		xf86LoaderReqSymLists(exaSymbols, NULL);
 	}
 
 	TRACE_EXIT("PreInit");
