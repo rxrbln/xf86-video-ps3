@@ -35,6 +35,13 @@ AM_INIT_AUTOMAKE([dist-bzip2])
 
 AM_MAINTAINER_MODE
 
+# Require X.Org macros 1.8 or later for MAN_SUBSTS set by XORG_MANPAGE_SECTIONS
+m4_ifndef([XORG_MACROS_VERSION],
+          [m4_fatal([must install xorg-macros 1.8 or later before running autoconf/autogen.
+	Hint: either install from source, git://anongit.freedesktop.org/xorg/util/macros or,
+	depending on you distribution, try package 'xutils-dev' or 'xorg-x11-util-macros'])])
+XORG_MACROS_VERSION(1.8)
+
 # Require X.Org server macros (i.e. XORG_DRIVER_CHECK_EXT) to check for required modules
 m4_ifndef([XORG_DRIVER_CHECK_EXT],
           [m4_fatal([must install xorg-server macros before running autoconf/autogen.
