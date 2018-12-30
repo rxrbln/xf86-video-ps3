@@ -142,7 +142,7 @@ static int enter_direct_mode(PS3Ptr pPS3)
 	int val = 0;
 	int mode = 0;
 
-	if ((fd = open("/dev/fb0", O_RDWR)) < 0) {
+	if ((fd = open(DEV_VFB, O_RDWR)) < 0) {
 		ErrorF("open: %s", strerror(errno));
 		return -1;
 	}
