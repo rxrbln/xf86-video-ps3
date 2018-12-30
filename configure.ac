@@ -60,9 +60,11 @@ AC_ARG_WITH(xorg-module-dir,
                            [Default xorg module directory [[default=$libdir/xorg/modules]]]),
             [moduledir="$withval"],
             [moduledir="$libdir/xorg/modules"])
-AC_ARG_ENABLE(pciaccess,     AS_HELP_STRING([--enable-pciaccess],
+AC_ARG_ENABLE(pciaccess,
+              AS_HELP_STRING([--enable-pciaccess],
                              [Enable use of libpciaccess (default: disabled)]),
-			     [PCIACCESS=$enableval], [PCIACCESS=no])
+              [PCIACCESS=$enableval],
+              [PCIACCESS=no])
 
 # Checks for extensions
 XORG_DRIVER_CHECK_EXT(RANDR, randrproto)
