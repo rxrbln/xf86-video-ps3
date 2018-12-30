@@ -294,7 +294,7 @@ PS3PreInit(ScrnInfoPtr pScrn, int flags)
 	if (!xf86SetDefaultVisual(pScrn, -1))
 		return FALSE;
 
-	/* We don't currently support DirectColor at > 8bpp */
+	/* We don't currently support DirectColor at any depths */
 	if (pScrn->defaultVisual != TrueColor) {
 		xf86DrvMsg(pScrn->scrnIndex, X_ERROR, "requested default visual"
 			   " (%s) is not supported at depth %d\n",
