@@ -24,4 +24,9 @@ ACLOCAL_AMFLAGS = -I m4
 
 SUBDIRS = src man
 
-EXTRA_DIST = ps3X
+.PHONY: ChangeLog
+
+ChangeLog:
+	$(CHANGELOG_CMD)
+
+EXTRA_DIST = ChangeLog ps3X
