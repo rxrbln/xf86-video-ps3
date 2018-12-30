@@ -55,9 +55,6 @@ m4_ifndef([XORG_DRIVER_CHECK_EXT],
 AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
 
-# Checks for programs
-AC_PROG_CC
-
 AH_TOP([#include "xorg-server.h"])
 
 # Define a configure option for an alternate module directory
