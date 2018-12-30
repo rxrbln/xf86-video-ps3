@@ -38,7 +38,6 @@
 |*                                                                           *|
  \***************************************************************************/
 
-/* $XFree86: xc/programs/Xserver/hw/xfree86/drivers/nv/nv_dma.h,v 1.4 2004/03/20 01:52:16 mvojkovi Exp $ */
 #ifndef PS3_DMA_H
 #define PS3_DMA_H
 
