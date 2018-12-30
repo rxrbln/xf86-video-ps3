@@ -43,6 +43,7 @@ m4_ifndef([XORG_MACROS_VERSION],
 	Hint: either install from source, git://anongit.freedesktop.org/xorg/util/macros or,
 	depending on you distribution, try package 'xutils-dev' or 'xorg-x11-util-macros'])])
 XORG_MACROS_VERSION(1.8)
+XORG_DEFAULT_OPTIONS
 
 # Require X.Org server macros (i.e. XORG_DRIVER_CHECK_EXT) to check for required modules
 m4_ifndef([XORG_DRIVER_CHECK_EXT],
@@ -93,9 +94,6 @@ AC_SUBST([moduledir])
 
 DRIVER_NAME=ps3
 AC_SUBST([DRIVER_NAME])
-
-XORG_MANPAGE_SECTIONS
-XORG_RELEASE_VERSION
 
 AC_CONFIG_FILES([
                 Makefile
