@@ -89,7 +89,6 @@ if test "x$PCIACCESS" = xyes; then
     XORG_CFLAGS="$XORG_CFLAGS $PCIACCESS_CFLAGS"
 fi
 
-AC_SUBST([XORG_CFLAGS])
 AC_SUBST([moduledir])
 
 DRIVER_NAME=ps3
