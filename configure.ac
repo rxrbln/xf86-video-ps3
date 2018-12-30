@@ -20,6 +20,7 @@
 #
 # Process this file with autoconf to produce a configure script
 
+# Initialize Autoconf
 AC_PREREQ([2.58])
 AC_INIT([xf86-video-ps3],
         [0.3.1],
@@ -31,6 +32,7 @@ AC_CONFIG_HEADERS([config.h])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_AUX_DIR(.)
 
+# Initialize Automake
 AM_INIT_AUTOMAKE([dist-bzip2])
 
 AM_MAINTAINER_MODE
@@ -48,30 +50,35 @@ m4_ifndef([XORG_DRIVER_CHECK_EXT],
 	Hint: either install from source, git://anongit.freedesktop.org/xorg/xserver or,
 	depending on your distribution, try package 'xserver-xorg-dev' or 'xorg-x11-server-devel'])])
 
-# Checks for programs.
+# Initialize libtool
 AC_DISABLE_STATIC
 AC_PROG_LIBTOOL
+
+# Checks for programs
 AC_PROG_CC
 
 AH_TOP([#include "xorg-server.h"])
 
+# Define a configure option for an alternate module directory
 AC_ARG_WITH(xorg-module-dir,
             AS_HELP_STRING([--with-xorg-module-dir=DIR],
                            [Default xorg module directory [[default=$libdir/xorg/modules]]]),
             [moduledir="$withval"],
             [moduledir="$libdir/xorg/modules"])
+
+# Define a configure option for pciaccess support
 AC_ARG_ENABLE(pciaccess,
               AS_HELP_STRING([--enable-pciaccess],
                              [Enable use of libpciaccess (default: disabled)]),
               [PCIACCESS=$enableval],
               [PCIACCESS=no])
 
-# Checks for extensions
+# Store the list of server defined optional extensions in REQUIRED_MODULES
 XORG_DRIVER_CHECK_EXT(RANDR, randrproto)
 XORG_DRIVER_CHECK_EXT(RENDER, renderproto)
 XORG_DRIVER_CHECK_EXT(XV, videoproto)
 
-# Checks for pkg-config packages
+# Obtain compiler/linker options for the driver dependencies
 PKG_CHECK_MODULES(XORG, [xorg-server >= 1.0.99.901 xproto fontsproto $REQUIRED_MODULES])
 sdkdir=$(pkg-config --variable=sdkdir xorg-server)
 
@@ -81,8 +88,6 @@ if test "x$PCIACCESS" = xyes; then
     PKG_CHECK_MODULES([PCIACCESS], [pciaccess >= 0.8.0])
     XORG_CFLAGS="$XORG_CFLAGS $PCIACCESS_CFLAGS"
 fi
-
-# Checks for libraries.
 
 AC_SUBST([XORG_CFLAGS])
 AC_SUBST([moduledir])
