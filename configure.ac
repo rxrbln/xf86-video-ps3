@@ -52,8 +52,7 @@ m4_ifndef([XORG_DRIVER_CHECK_EXT],
 	depending on your distribution, try package 'xserver-xorg-dev' or 'xorg-x11-server-devel'])])
 
 # Initialize libtool
-AC_DISABLE_STATIC
-AC_PROG_LIBTOOL
+LT_INIT([disable-static])
 
 AH_TOP([#include "xorg-server.h"])
 
