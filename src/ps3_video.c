@@ -1098,7 +1098,7 @@ PS3QueryImageAttributes(ScrnInfoPtr pScrn, int id,
 static XF86VideoAdaptorPtr
 PS3SetupBlitVideo (ScreenPtr pScreen)
 {
-	ScrnInfoPtr         pScrn = xf86Screens[pScreen->myNum];
+	ScrnInfoPtr         pScrn = xf86ScreenToScrn(pScreen);
 	PS3Ptr               pPS3       = PS3PTR(pScrn);
 	XF86VideoAdaptorPtr adapt;
 	PS3PortPrivPtr       pPriv;
@@ -1177,7 +1177,7 @@ PS3ChipsetHasOverlay(PS3Ptr pPS3)
  */
 void PS3InitVideo (ScreenPtr pScreen)
 {
-	ScrnInfoPtr          pScrn = xf86Screens[pScreen->myNum];
+	ScrnInfoPtr          pScrn = xf86ScreenToScrn(pScreen);
 	PS3Ptr                pPS3 = PS3PTR(pScrn);
 	XF86VideoAdaptorPtr *adaptors, *newAdaptors = NULL;
 	XF86VideoAdaptorPtr  blitAdaptor = NULL;

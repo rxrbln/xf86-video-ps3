@@ -1,6 +1,7 @@
 #ifndef __PS3_H__
 #define __PS3_H__
 
+#include "compat-api.h"
 
 struct _PS3Rec;
 typedef struct _PS3Rec *PS3Ptr;
