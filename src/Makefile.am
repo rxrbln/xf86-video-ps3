@@ -29,6 +29,7 @@ ps3_drv_la_LDFLAGS = -module -avoid-version
 ps3_drv_ladir = @moduledir@/drivers
 
 ps3_drv_la_SOURCES = \
+                     compat-api.h \
                      nouveau_class.h \
                      nv_shaders.h \
                      nv30_fpinst.h \

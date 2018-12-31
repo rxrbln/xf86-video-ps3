@@ -403,7 +403,7 @@ NV40EXAPrepareComposite(int op, PicturePtr psPict,
 				PixmapPtr  pmPix,
 				PixmapPtr  pdPix)
 {
-	ScrnInfoPtr pScrn = xf86Screens[psPix->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(psPix->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	nv_pict_op_t *blend;
 	int fpid = NV40EXA_FPID_PASS_COL0;
@@ -504,7 +504,7 @@ NV40EXAComposite(PixmapPtr pdPix, int srcX , int srcY,
 				  int dstX , int dstY,
 				  int width, int height)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pdPix->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pdPix->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	float sX0, sX1, sY0, sY1;
 	float mX0, mX1, mY0, mY1;
@@ -545,7 +545,7 @@ NV40EXAComposite(PixmapPtr pdPix, int srcX , int srcY,
 void
 NV40EXADoneComposite(PixmapPtr pdPix)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pdPix->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pdPix->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
 	BEGIN_RING(PS3TCLChannel, NV40TCL_BEGIN_END, 1);

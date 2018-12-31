@@ -54,9 +54,8 @@ static const OptionInfoRec * PS3AvailableOptions(int chipid, int busid);
 static void	PS3Identify(int flags);
 static Bool	PS3Probe(DriverPtr drv, int flags);
 static Bool	PS3PreInit(ScrnInfoPtr pScrn, int flags);
-static Bool	PS3ScreenInit(int Index, ScreenPtr pScreen, int argc,
-				char **argv);
-static Bool	PS3CloseScreen(int scrnIndex, ScreenPtr pScreen);
+static Bool	PS3ScreenInit(SCREEN_INIT_ARGS_DECL);
+static Bool	PS3CloseScreen(CLOSE_SCREEN_ARGS_DECL);
 static Bool	PS3DriverFunc(ScrnInfoPtr pScrn, xorgDriverFuncOp op,
 				pointer ptr);
 
@@ -388,7 +387,7 @@ static Bool
 PS3CreateScreenResources(ScreenPtr pScreen)
 {
     PixmapPtr pPixmap;
-    ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+    ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
     PS3Ptr pPS3 = PS3PTR(pScrn);
     Bool ret;
 
@@ -405,9 +404,9 @@ PS3CreateScreenResources(ScreenPtr pScreen)
 }
 
 static Bool
-PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
+PS3ScreenInit(SCREEN_INIT_ARGS_DECL)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	VisualPtr visual;
 	int init_picture = 0;
@@ -427,7 +426,7 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 #endif
 
 	if (NULL == (pPS3->fbmem = fbdevHWMapVidmem(pScrn))) {
-	        xf86DrvMsg(scrnIndex,X_ERROR,"mapping of video memory"
+	        xf86DrvMsg(pScrn->scrnIndex,X_ERROR,"mapping of video memory"
 			   " failed\n");
 		return FALSE;
 	}
@@ -436,22 +435,22 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 
 	fbdevHWSave(pScrn);
 	if (!fbdevHWModeInit(pScrn, pScrn->currentMode)) {
-		xf86DrvMsg(scrnIndex,X_ERROR,"mode initialization failed\n");
+		xf86DrvMsg(pScrn->scrnIndex,X_ERROR,"mode initialization failed\n");
 		return FALSE;
 	}
 	fbdevHWSaveScreen(pScreen, SCREEN_SAVER_ON);
-	fbdevHWAdjustFrame(scrnIndex,0,0);
+	fbdevHWAdjustFrame(ADJUST_FRAME_ARGS(pScrn, 0, 0));
 
 	/* mi layer */
 	miClearVisualTypes();
 	if (!miSetVisualTypes(pScrn->depth, TrueColorMask, pScrn->rgbBits, TrueColor)) {
-		xf86DrvMsg(scrnIndex,X_ERROR,"visual type setup failed"
+		xf86DrvMsg(pScrn->scrnIndex,X_ERROR,"visual type setup failed"
 			   " for %d bits per pixel [1]\n",
 			   pScrn->bitsPerPixel);
 		return FALSE;
 	}
 	if (!miSetPixmapDepths()) {
-	  xf86DrvMsg(scrnIndex,X_ERROR,"pixmap depth setup failed\n");
+	  xf86DrvMsg(pScrn->scrnIndex,X_ERROR,"pixmap depth setup failed\n");
 	  return FALSE;
 	}
 
@@ -466,7 +465,7 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 				   pScrn->bitsPerPixel);
 		init_picture = 1;
 	} else {
-		xf86DrvMsg(scrnIndex, X_ERROR,
+		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
 			   "internal error: invalid number of bits per"
 			   " pixel (%d) encountered in"
 			   " PS3ScreenInit()\n", pScrn->bitsPerPixel);
@@ -498,7 +497,7 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 
 	if (!pPS3->NoAccel) {
 		if (!PS3InitDma(pScrn)) {
-			xf86DrvMsg(scrnIndex,X_ERROR, "DMA init failed\n");
+			xf86DrvMsg(pScrn->scrnIndex,X_ERROR, "DMA init failed\n");
 			return FALSE;
 		}
 
@@ -511,7 +510,7 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 	miDCInitialize(pScreen, xf86GetPointerScreenFuncs());
 
 	if (!miCreateDefColormap(pScreen)) {
-		xf86DrvMsg(scrnIndex, X_ERROR,
+		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
 			   "internal error: miCreateDefColormap failed "
 			   "in PS3ScreenInit()\n");
 		return FALSE;
@@ -547,9 +546,9 @@ PS3ScreenInit(int scrnIndex, ScreenPtr pScreen, int argc, char **argv)
 }
 
 static Bool
-PS3CloseScreen(int scrnIndex, ScreenPtr pScreen)
+PS3CloseScreen(CLOSE_SCREEN_ARGS_DECL)
 {
-	ScrnInfoPtr pScrn = xf86Screens[scrnIndex];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	
 	fbdevHWRestore(pScrn);
@@ -561,7 +560,7 @@ PS3CloseScreen(int scrnIndex, ScreenPtr pScreen)
 
 	pScreen->CreateScreenResources = pPS3->CreateScreenResources;
 	pScreen->CloseScreen = pPS3->CloseScreen;
-	return (*pScreen->CloseScreen)(scrnIndex, pScreen);
+	return (*pScreen->CloseScreen)(CLOSE_SCREEN_ARGS);
 }
 
 static Bool

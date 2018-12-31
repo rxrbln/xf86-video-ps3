@@ -754,7 +754,7 @@ PS3AccelGetCtxSurf2DFormatFromPicture(PicturePtr pPict, int *fmt_ret)
 CARD32
 PS3AccelGetPixmapOffset(PixmapPtr pPix)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pPix->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pPix->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	unsigned long offset;
 
@@ -772,7 +772,7 @@ PS3AccelGetPixmapOffset(PixmapPtr pPix)
 Bool
 PS3AccelSetCtxSurf2D(PixmapPtr psPix, PixmapPtr pdPix, int format)
 {
-	ScrnInfoPtr pScrn = xf86Screens[psPix->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(psPix->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
 	PS3DmaStart(pPS3, PS3ContextSurfacesChannel, SURFACE_FORMAT, 4);
@@ -803,7 +803,7 @@ static CARD32 rectFormat(DrawablePtr pDrawable)
 
 static void PS3ExaWaitMarker(ScreenPtr pScreen, int marker)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
 	PS3Sync(pPS3);
@@ -827,7 +827,7 @@ static inline Bool PS3AccelMemcpyRect(char *dst, const char *src, int height,
 
 static void *PS3ExaPixmapMap(PixmapPtr pPix)
 {
-        ScrnInfoPtr pScrn = xf86Screens[pPix->drawable.pScreen->myNum];
+        ScrnInfoPtr pScrn = xf86ScreenToScrn(pPix->drawable.pScreen);
         PS3Ptr pPS3 = PS3PTR(pScrn);
         void *map;
 
@@ -840,7 +840,7 @@ static Bool PS3ExaPrepareSolid(PixmapPtr pPixmap,
 			      Pixel planemask,
 			      Pixel fg)
 {
-        ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+        ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
         PS3Ptr pPS3 = PS3PTR(pScrn);
         int fmt;
 
@@ -878,7 +878,7 @@ static Bool PS3ExaPrepareSolid(PixmapPtr pPixmap,
 
 static void PS3ExaSolid (PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 {
-        ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+        ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
         PS3Ptr pPS3 = PS3PTR(pScrn);
         int width = x2 - x1;
         int height = y2 - y1;
@@ -897,7 +897,7 @@ static void PS3ExaSolid (PixmapPtr pPixmap, int x1, int y1, int x2, int y2)
 
 static void PS3ExaDoneSolid (PixmapPtr pPixmap)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pPixmap->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pPixmap->drawable.pScreen);
         PS3Ptr pPS3 = PS3PTR(pScrn);
 
 	TRACE();
@@ -922,7 +922,7 @@ static Bool PS3ExaPrepareCopy_2(PixmapPtr pSrcPixmap,
 				int       alu,
 				Pixel     planemask)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pSrcPixmap->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pSrcPixmap->drawable.pScreen);
         PS3Ptr pPS3 = PS3PTR(pScrn);
         int fmt;
 	int w, h;
@@ -960,7 +960,7 @@ static void PS3ExaCopy_2(PixmapPtr pDstPixmap,
 			 int	width,
 			 int	height)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
         PS3Ptr pPS3 = PS3PTR(pScrn);
 
 //	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
@@ -976,7 +976,7 @@ static void PS3ExaCopy_2(PixmapPtr pDstPixmap,
 
 static void PS3ExaDoneCopy_2(PixmapPtr pDstPixmap)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
         PS3Ptr pPS3 = PS3PTR(pScrn);
 
 	PS3NotifierReset(pPS3);
@@ -1000,7 +1000,7 @@ static Bool PS3ExaPrepareCopy(PixmapPtr pSrcPixmap,
 			     int       alu,
 			     Pixel     planemask)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int srcFormat, dstFormat;
 
@@ -1096,7 +1096,7 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 		      int	width,
 		      int	height)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
 //	ErrorF("%s from (%d,%d) to (%d,%d) size %dx%d\n", __FUNCTION__,
@@ -1151,7 +1151,7 @@ static void PS3ExaCopy(PixmapPtr pDstPixmap,
 
 static void PS3ExaDoneCopy (PixmapPtr pDstPixmap)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pDstPixmap->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDstPixmap->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	CARD32 format;
 
@@ -1234,7 +1234,7 @@ static Bool PS3DownloadFromScreen(PixmapPtr pSrc,
 				 int w,  int h,
 				 char *dst,  int dst_pitch)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pSrc->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pSrc->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int src_offset, src_pitch, cpp, offset;
 	const char *src;
@@ -1333,7 +1333,7 @@ static Bool PS3UploadToScreen(PixmapPtr pDst,
 			     int x, int y, int w, int h,
 			     char *src, int src_pitch)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pDst->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int dst_offset, dst_pitch, cpp;
 	char *dst;
@@ -1423,7 +1423,7 @@ static Bool PS3PrepareComposite(int	  op,
 			       PixmapPtr  pMask,
 			       PixmapPtr  pDst)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pSrcPicture->pDrawable->pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pSrcPicture->pDrawable->pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	int srcFormat, dstFormat;
 
@@ -1477,7 +1477,7 @@ static void PS3Composite(PixmapPtr pDst,
 			int	  width,
 			int	  height)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pDst->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
 	TRACE();
@@ -1501,7 +1501,7 @@ static void PS3Composite(PixmapPtr pDst,
 
 static void PS3DoneComposite (PixmapPtr pDst)
 {
-	ScrnInfoPtr pScrn = xf86Screens[pDst->drawable.pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pDst->drawable.pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 	CARD32 format;
 
@@ -1533,7 +1533,7 @@ extern void NV40EXADoneComposite(PixmapPtr pdPix);
 
 Bool PS3ExaInit(ScreenPtr pScreen) 
 {
-	ScrnInfoPtr pScrn = xf86Screens[pScreen->myNum];
+	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
 
 	TRACE();
