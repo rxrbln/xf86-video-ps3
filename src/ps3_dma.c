@@ -23,49 +23,28 @@ void PS3DmaKickoffCallback(PS3Ptr pPS3)
 }
 
 /* There is a HW race condition with videoram command buffers.
- * You can't jump to the location of your put offset.  We write put
- * at the jump offset + SKIPS dwords with noop padding in between
- * to solve this problem
+ * You can't jump to the location of your put offset.
  */
-#define SKIPS  8
 
 void PS3DmaWait (ScrnInfoPtr pScrn, int size)
 {
 	PS3Ptr pPS3 = PS3PTR(pScrn);
-	int t_start;
-	int dmaGet;
+	int t_start = GetTimeInMillis();
+	int dmaGet = GetTimeInMillis();
 
-	ErrorF("%s\n", __FUNCTION__);
-
-	size++;
-
-	t_start = GetTimeInMillis();
+	size += 16; /* vast reserve for JMP to front */
 	while(pPS3->dmaFree < size) {
-		dmaGet = READ_GET(pPS3);
+		ErrorF("%s %x\n", __FUNCTION__, dmaGet);
+	        ErrorF("%s fifo wrap JMP to front\n", __FUNCTION__);
 
-		if(pPS3->dmaPut >= dmaGet) {
-			pPS3->dmaFree = pPS3->dmaMax - pPS3->dmaCurrent;
-			if(pPS3->dmaFree < size) {
-				PS3DmaNext(pPS3, (0x20000000|pPS3->fifo_start));
-				if(dmaGet <= SKIPS) {
-					if(pPS3->dmaPut <= SKIPS) /* corner case - will be idle */
-						WRITE_PUT(pPS3, SKIPS + 1);
-					do {
-						if (GetTimeInMillis() - t_start > 2000)
-							PS3Sync(pScrn);
-						dmaGet = READ_GET(pPS3);
-					} while(dmaGet <= SKIPS);
-				}
-				WRITE_PUT(pPS3, SKIPS);
+		PS3DmaNext(pPS3, (0x20000000|pPS3->fifo_start));
+		pPS3->dmaFree -= 1;
+		WRITE_PUT(pPS3, 0);
+		pPS3->dmaCurrent = pPS3->dmaPut = 0;
 
-				pPS3->dmaCurrent = pPS3->dmaPut = SKIPS;
-				pPS3->dmaFree = dmaGet - (SKIPS + 1);
-			}
-		} else
-			pPS3->dmaFree = dmaGet - pPS3->dmaCurrent - 1;
+		PS3Sync(pScrn); /* this does loop, does it? ReneR */
 
-		if (GetTimeInMillis() - t_start > 2000)
-			PS3Sync(pScrn);
+		pPS3->dmaFree = pPS3->dmaMax;
 	}
 }
 
@@ -146,15 +125,6 @@ void PS3ResetGraphics(ScrnInfoPtr pScrn)
 	pPS3->dmaPut = pPS3->dmaCurrent = READ_GET(pPS3);
 	pPS3->dmaMax = (pPS3->fifo_size >> 2) - 2;
 	pPS3->dmaFree = pPS3->dmaMax - pPS3->dmaCurrent;
-
-	/* assert there's enough room for the skips */
-	if(pPS3->dmaFree <= SKIPS)
-		PS3DmaWait(pScrn, SKIPS); 
-	for (i=0; i<SKIPS; i++) {
-		PS3DmaNext(pPS3,0);
-		pPS3->dmaBase[i]=0;
-	}
-	pPS3->dmaFree -= SKIPS;
 }
 
 Bool PS3InitDma(ScrnInfoPtr pScrn)
@@ -188,14 +158,15 @@ Bool PS3InitDma(ScrnInfoPtr pScrn)
 	pPS3->dmaMax = (pPS3->fifo_size >> 2) - 2;
 	pPS3->dmaFree = pPS3->dmaMax - pPS3->dmaCurrent;
 
-	for (i = 0; i < SKIPS; i++) {
-		pPS3->dmaBase[i] = 0;
-		PS3DmaNext(pPS3, 0);
-	}
-	pPS3->dmaFree -= SKIPS;
+	ErrorF("FIFO: GET: %x, PUT: %x\n", READ_GET(pPS3), READ_PUT(pPS3));
 
+	for (i = 0; i < 4; i++) {
+		PS3DmaNext(pPS3, 0); // test NOP
+	}
+	PS3DmaKickoff(pPS3); /* ReneR: dma test early */
+
+	PS3Sync(pScrn);
 	ErrorF("%s:%d\n", __FUNCTION__, __LINE__);
 
 	return TRUE;
 }
-
