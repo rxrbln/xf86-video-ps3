@@ -60,9 +60,6 @@ static int gpu_get_info(PS3Ptr pPS3)
 	pPS3->fifo_size = info.fifo_size;
 	pPS3->ctrl_size = info.ctrl_size;
 
-	/* GPU hangs if all space is used */
-	pPS3->fifo_size -= 1024;
-
 	ret = 0;
 out:
 	close(fd);
