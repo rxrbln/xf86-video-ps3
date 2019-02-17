@@ -21,6 +21,8 @@
 #include "ps3.h"
 #include "ps3_dma.h"
 
+#define GPU_FB_START (64 * 1024)
+
 #define IMAGE_MAX_W 1920
 #define IMAGE_MAX_H 1080
 
@@ -353,7 +355,7 @@ PS3PutBlitImage(ScrnInfoPtr pScrn, int src_offset, int id,
 			    NV04_SCALED_IMAGE_FROM_MEMORY_SIZE, 4);
 		PS3DmaNext(pPS3, (height << 16) | width);
 		PS3DmaNext(pPS3, src_pitch);
-		PS3DmaNext(pPS3, pPS3->iof_offset + 
+		PS3DmaNext(pPS3, pPS3->iof_offset + GPU_FB_START +
 			   (pPS3->xv_base - pPS3->iof_base) + src_offset);
 		PS3DmaNext(pPS3, src_point);
 		pbox++;
