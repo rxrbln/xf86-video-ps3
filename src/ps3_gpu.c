@@ -131,7 +131,7 @@ static int enter_direct_mode(PS3Ptr pPS3)
 		goto out;
 	}
 
-	pPS3->iof_base = (CARD32) pPS3->fbmem;
+	pPS3->iof_base = (long) pPS3->fbmem;
 	pPS3->iof_size = fix.smem_len;
 	pPS3->iof_offset = 0x0d000000; /* GPUIOF */
 	
@@ -178,19 +178,19 @@ int PS3GpuInit(PS3Ptr pPS3)
 	/* fill in GPU context */
 	gpu_get_info(pPS3);
 
-	if ((pPS3->vram_base = (CARD32)
+	if ((pPS3->vram_base = (long)
 	     map_resource(DEV_GPU_VRAM, pPS3->vram_size)) == 0) {
 		ErrorF("failed to map vram\n");
 		goto err_free;
 	}
 
-	if ((pPS3->fifo_base = (CARD32)
+	if ((pPS3->fifo_base = (long)
 	     map_resource(DEV_GPU_FIFO, pPS3->fifo_size)) == 0) {
 		ErrorF("failed to map fifo\n");
 		goto err_unmap_vram;
 	}
 
-	if ((pPS3->ctrl_base = (CARD32)
+	if ((pPS3->ctrl_base = (long)
 	     map_resource(DEV_GPU_CTRL, pPS3->ctrl_size)) == 0) {
 		ErrorF("failed to map ctrl\n");
 		goto err_unmap_fifo;

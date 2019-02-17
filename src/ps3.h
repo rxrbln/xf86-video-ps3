@@ -17,17 +17,17 @@ typedef struct _PS3Rec {
 	Bool                            NoAccel;
 
 	int fd;
-	CARD32 vram_base;
+	long vram_base;
 	CARD32 vram_size;
-	CARD32 fifo_base;
+	long fifo_base;
 	CARD32 fifo_size;
 	CARD32 fifo_start;
-	CARD32 ctrl_base;
+	long ctrl_base;
 	CARD32 ctrl_size;
-	CARD32 iof_base;
+	long iof_base;
 	CARD32 iof_size;
 	CARD32 iof_offset;
-	CARD32 xv_base;
+	long xv_base;
 	CARD32 xv_size;
 	XF86VideoAdaptorPtr             blitAdaptor;
 	void				(*DMAKickoffCallback)(PS3Ptr pPS3);
