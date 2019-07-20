@@ -36,6 +36,7 @@ ps3_drv_la_SOURCES = \
                      nv40_vpinst.h \
                      ps3.c \
                      ps3.h \
+                     ps3_cursor.c \
                      ps3_dma.c \
                      ps3_dma.h \
                      ps3_exa.c \

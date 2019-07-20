@@ -97,6 +97,10 @@ static int gpu_get_info(PS3Ptr pPS3)
 	pPS3->fifo_size = info.fifo_size;
 	pPS3->ctrl_size = info.ctrl_size;
 
+	/* steal some memory for the cursor */
+	pPS3->vram_size -= (32 * 1024);
+	pPS3->cursor_start = pPS3->vram_size;
+
 	/* GPU hangs if all space is used */
 	pPS3->fifo_size -= 1024;
 
@@ -265,6 +269,8 @@ int PS3GpuInit(PS3Ptr pPS3)
 		ErrorF("failed to map ctrl\n");
 		goto err_unmap_fifo;
 	}
+
+	pPS3->CURSOR = (volatile CARD32 *)((char*)pPS3->vram_base + pPS3->cursor_start);
 
 	/* determine the start of the FIFO from GPU point of view */
 	pPS3->fifo_start = ((CARD32 *) pPS3->ctrl_base)[0x10] &

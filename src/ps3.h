@@ -3,6 +3,8 @@
 
 #include "compat-api.h"
 
+#include "xf86Cursor.h"
+
 struct _PS3Rec;
 typedef struct _PS3Rec *PS3Ptr;
 typedef struct _PS3Rec {
@@ -15,6 +17,7 @@ typedef struct _PS3Rec {
 	EntityInfoPtr			pEnt;
 	OptionInfoPtr			Options;
 	ExaDriverPtr			EXADriverPtr;
+	xf86CursorInfoPtr		CursorInfoRec;
 	Bool                            NoAccel;
 
 	int fd;
@@ -30,6 +33,7 @@ typedef struct _PS3Rec {
 	CARD32 iof_offset;
 	long xv_base;
 	CARD32 xv_size;
+	CARD32 cursor_start;
 	XF86VideoAdaptorPtr             blitAdaptor;
 
 	CARD32				*dmaBase;
@@ -42,8 +46,13 @@ typedef struct _PS3Rec {
 	CARD32				*fpMem;
 
 	volatile CARD32			*FIFO;
+	volatile CARD32			*CURSOR;
 	Bool				LockedUp;
 
+	/* Cursor */
+	Bool				alphaCursor;
+	CARD32				curFg, curBg;
+	CARD32				curImage[256];
 } PS3Rec;
 
 #define PS3PTR(p) ((PS3Ptr)((p)->driverPrivate))
