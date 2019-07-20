@@ -3,6 +3,7 @@
  *	     Michel DÃ¤nzer, <michel@tungstengraphics.com>
  *
  * PS3 Modifications (c) Vivien Chappelier (vivien.chappelier@free.fr)
+ * René Rebe <rene@exactcode.de>
  */
 
 #ifdef HAVE_CONFIG_H
@@ -196,7 +197,7 @@ PS3Probe(DriverPtr drv, int flags)
 	if (flags & PROBE_DETECT)
 		return FALSE;
 
-	if ((numDevSections = xf86MatchDevice(PS3_DRIVER_NAME, &devSections)) <= 0) 
+	if ((numDevSections = xf86MatchDevice(PS3_DRIVER_NAME, &devSections)) <= 0)
 	    return FALSE;
 
 	if (!xf86LoadDrvSubModule(drv, "fbdevhw"))
@@ -520,6 +521,14 @@ PS3ScreenInit(SCREEN_INIT_ARGS_DECL)
 	/* software cursor */
 	miDCInitialize(pScreen, xf86GetPointerScreenFuncs());
 
+	/* Initialize HW cursor layer. Must follow software cursor initialization */
+	if (1) { //pNv->HWCursor) {
+		if(!NVCursorInit(pScreen))
+			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+			"Hardware cursor initialization failed\n");
+		pPS3->alphaCursor = 1;
+	}
+
 	if (!miCreateDefColormap(pScreen)) {
 		xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
 			   "internal error: miCreateDefColormap failed "
@@ -528,7 +537,7 @@ PS3ScreenInit(SCREEN_INIT_ARGS_DECL)
 	}
 
 	flags = CMAP_PALETTED_TRUECOLOR;
-	if(!xf86HandleColormaps(pScreen, 256, 8, fbdevHWLoadPaletteWeak(), 
+	if(!xf86HandleColormaps(pScreen, 256, 8, fbdevHWLoadPaletteWeak(),
 				NULL, flags))
 		return FALSE;
 
@@ -561,6 +570,9 @@ PS3CloseScreen(CLOSE_SCREEN_ARGS_DECL)
 {
 	ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
 	PS3Ptr pPS3 = PS3PTR(pScrn);
+
+	if (pPS3->CursorInfoRec)
+		xf86DestroyCursorInfoRec(pPS3->CursorInfoRec);
 	
 	fbdevHWRestore(pScrn);
 	fbdevHWUnmapVidmem(pScrn);

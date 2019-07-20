@@ -30,4 +30,4 @@ ps3_drv_ladir = @moduledir@/drivers
 
 ps3_drv_la_SOURCES = \
                      compat-api.h \
-                     ps3.c ps3_gpu.c ps3_exa.c ps3_dma.c ps3_video.c
+                     ps3.c ps3_cursor.c ps3_gpu.c ps3_exa.c ps3_dma.c ps3_video.c
