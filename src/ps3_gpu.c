@@ -52,17 +52,12 @@ static int gpu_get_info(PS3Ptr pPS3)
 		goto out;
 	}
 	
-// TEMP
 	ErrorF("vram %d fifo %d ctrl %d\n",
 	       info.vram_size, info.fifo_size, info.ctrl_size);
 
 	pPS3->vram_size = info.vram_size;
 	pPS3->fifo_size = info.fifo_size;
 	pPS3->ctrl_size = info.ctrl_size;
-
-	/* steal some memory for the cursor */
-	pPS3->vram_size -= (32 * 1024);
-	pPS3->cursor_start = pPS3->vram_size;
 
 	/* GPU hangs if all space is used */
 	pPS3->fifo_size -= 1024;
@@ -84,11 +79,8 @@ static void *map_resource(char const *name, int len)
 		return NULL;
 	}
 
-// TEMP
-	printf("mmap: %s len %d\n", name, len);
-
+	ErrorF("mmap: %s len %d\n", name, len);
 	virt = mmap(0, len, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-
 	if (virt == MAP_FAILED)
 		return NULL;
 
@@ -203,7 +195,11 @@ int PS3GpuInit(PS3Ptr pPS3)
 		goto err_unmap_fifo;
 	}
 
-	pPS3->CURSOR = (volatile CARD32 *)((char*)pPS3->vram_base + pPS3->cursor_start);
+	/* steal some memory for the cursor */
+	pPS3->vram_size -= (32 * 1024);
+	pPS3->cursor_start = pPS3->vram_size;
+
+	pPS3->CURSOR = (CARD32 *)((char*)pPS3->vram_base + pPS3->cursor_start);
 
 	/* determine the start of the FIFO from GPU point of view */
 	pPS3->fifo_start = ((CARD32 *) pPS3->ctrl_base)[0x10] &

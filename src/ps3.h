@@ -2,7 +2,6 @@
 #define __PS3_H__
 
 #include "compat-api.h"
-
 #include "xf86Cursor.h"
 
 struct _PS3Rec;
@@ -44,7 +43,7 @@ typedef struct _PS3Rec {
 	CARD32				dmaMax;
 
 	volatile CARD32			*FIFO;
-	volatile CARD32			*CURSOR;
+	CARD32				*CURSOR;
 	Bool				LockedUp;
 
 	/* Cursor */

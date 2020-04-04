@@ -1,3 +1,7 @@
+/*
+ * Authors:  Vivien Chappelier <vivien.chappelier@free.fr>
+ * Copyright (C) 2019-2020 René Rebe <rene@exactcode.de>
+ */
 
 #ifdef HAVE_CONFIG_H
 #include "config.h"
@@ -8,7 +12,6 @@
 #if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) < 6
 #include "xf86Resources.h"
 #endif
-#include "xf86PciInfo.h"
 #include "xf86Pci.h"
 #include "xf86fbman.h"
 #include "regionstr.h"

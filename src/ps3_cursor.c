@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2003 NVIDIA, Corporation
- * Copyright (c) 2019 René Rebe <rene@exactcode.de>
+ * Copyright (c) 2019,2020 René Rebe <rene@exactcode.de>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a
  * copy of this software and associated documentation files (the
@@ -31,7 +31,6 @@
 #if GET_ABI_MAJOR(ABI_VIDEODRV_VERSION) < 6
 #include "xf86Resources.h"
 #endif
-#include "xf86PciInfo.h"
 #include "xf86Pci.h"
 #include "xf86fbman.h"
 #include "regionstr.h"
@@ -220,7 +219,6 @@ NVSetCursorColors(ScrnInfoPtr pScrn, int bg, int fg)
 int NVShowHideCursor (PS3Ptr pPS3, int   ShowHide)
 {
     int	ret = ioctl(pPS3->fd, PS3FB_IOCTL_CURSOR_ENABLE, ShowHide);
-    ErrorF("ioctl enable: %d\n", ret);
     if (ret < 0) {
 	ErrorF("ioctl: %s", strerror(errno));
     }
@@ -278,7 +276,7 @@ NVLoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
     w = pCurs->bits->width;
     h = pCurs->bits->height;
 
-    if (1) {  /* premultiply */
+    if (0) {  /* premultiply */
        for(y = 0; y < h; y++) {
           for(x = 0; x < w; x++) {
              alpha = *image >> 24;
@@ -286,8 +284,8 @@ NVLoadCursorARGB(ScrnInfoPtr pScrn, CursorPtr pCurs)
                 tmp = *image;
              else {
                 tmp = (alpha << 24) |
-                         (((*image & 0xff) * alpha) / 255) |
-                        ((((*image & 0xff00) * alpha) / 255) & 0xff00) |
+                        (((*image & 0xff) * alpha) / 255) |
+                       ((((*image & 0xff00) * alpha) / 255) & 0xff00) |
                        ((((*image & 0xff0000) * alpha) / 255) & 0xff0000); 
              }
              image++;

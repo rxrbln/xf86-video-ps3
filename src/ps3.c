@@ -3,7 +3,7 @@
  *	     Michel DÃ¤nzer, <michel@tungstengraphics.com>
  *
  * PS3 Modifications (c) Vivien Chappelier (vivien.chappelier@free.fr)
- * René Rebe <rene@exactcode.de>
+ * Copyright (C) 2019,2020 René Rebe <rene@exactcode.de>
  */
 
 #ifdef HAVE_CONFIG_H
@@ -523,10 +523,10 @@ PS3ScreenInit(SCREEN_INIT_ARGS_DECL)
 
 	/* Initialize HW cursor layer. Must follow software cursor initialization */
 	if (1) { //pNv->HWCursor) {
+		pPS3->alphaCursor = 1;
 		if(!NVCursorInit(pScreen))
 			xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
 			"Hardware cursor initialization failed\n");
-		pPS3->alphaCursor = 1;
 	}
 
 	if (!miCreateDefColormap(pScreen)) {
